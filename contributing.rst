@@ -34,6 +34,7 @@ Making Changes
    `automatically closed`_ when merged into the `synchronization-benchmarks`_ ``master``
    branch.
 -  Where appropriate, please update the documentation and license of files.
+
    -  Ensure that each changed file has the correct copyright and license
       information. Files that entirely consist of contributions to this
       project should have the copyright notice and BSD-3-Clause SPDX license
@@ -42,6 +43,7 @@ Making Changes
       with the original copyright and license text retained:
 
       ::
+
         Portions copyright (c) [XXXX-]YYYY, ARM Limited and Contributors. All rights reserved.
 
       where XXXX is the year of first contribution (if different to YYYY) and
@@ -64,17 +66,17 @@ Submitting Changes
 
 -  When the changes are accepted, the maintainer of the repository will integrate them.
 
-   -  Typically, the `Maintainers`_ will merge the `pull request`_ into the
+   -  Typically, the Maintainers will merge the `pull request`_ into the
       ``integration`` branch within the GitHub UI, creating a merge commit.
    -  Please avoid creating merge commits in the `pull request`_ itself.
-   -  If the `pull request`_ is not based on a recent commit, the `Maintainers`_
+   -  If the `pull request`_ is not based on a recent commit, the Maintainers
       may rebase it onto the ``master`` branch first, or ask you to do this.
-   -  If the `pull request`_ cannot be automatically merged, the `Maintainers`_
+   -  If the `pull request`_ cannot be automatically merged, the Maintainers
       will ask you to rebase it onto the ``master`` branch.
-   -  After final integration testing, the `Maintainers`_ will push your merge
+   -  After final integration testing, the Maintainers will push your merge
       commit to the ``master`` branch. If a problem is found during integration,
       the merge commit will be removed from the ``integration`` branch and the
-      `Maintainers`_ will ask you to create a new pull request to resolve the
+      Maintainers will ask you to create a new pull request to resolve the
       problem.
    -  Please do not delete your topic branch until it is safely merged into
       the ``master`` branch.

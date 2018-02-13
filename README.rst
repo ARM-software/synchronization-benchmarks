@@ -25,12 +25,14 @@ The synchronization-benchmarks repository is divided up into multiple directorie
   analyzers.  In general, support code that applies to multiple benchmarks should go here.
 - benchmarks/ -- Broken up into sub-directories, one for each micro-benchmark.  Each sub-directory should general be structured
   as:
-  - / -- The root of the directory should contain a README with build instructions, and a detailed 
+
+  - / -- The root of the directory should contain a README with build instructions, and a detailed
     description of the test: what it is testing, how it is testing, and how to interpret the results. The root
     directory should also contain the build system files.
   - src/
   - include/
   - scripts/ -- Automation scripts for running and parsing the output of your micro-benchmark
+
 - ext/ -- This is a directory for third party code taken from other projects if for instance your micro-benchmark is
   meant for testing example synchronization primitives for various sources.  For each third party source, a sub-directory
   should be created that is descriptive of the origin of the imported code and the imported code placed in that sub-directory.  
