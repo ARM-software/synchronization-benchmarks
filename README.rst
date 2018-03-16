@@ -59,5 +59,5 @@ the `Contributing Guidelines`_.
 
 .. _GitHub: https://www.github.com/ARM-software/synchronization-benchmarks
 .. _GitHub issue tracker: https://github.com/ARM-software/synchronization-benchmarks/issues
-.. _license: ./license.rst
+.. _license: ./LICENSE
 .. _Contributing Guidelines: ./contributing.rst
