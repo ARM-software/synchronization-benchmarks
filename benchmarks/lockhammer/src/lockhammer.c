@@ -84,8 +84,8 @@ int main(int argc, char** argv)
     }
     else if (argc == 5) {
         num_threads = atoi(argv[1]);
-	/* Do not allow number of threads to exceed online cores
-	   in order to prevent deadlock ... */
+        /* Do not allow number of threads to exceed online cores
+           in order to prevent deadlock ... */
         num_threads = num_threads > num_cores ? num_cores : num_threads;
         locks_per_thread = atoi(argv[2]);
         lock_hold_work = atoi(argv[3]);
@@ -158,6 +158,12 @@ int main(int argc, char** argv)
     for (i = 0; i < num_threads; ++i) {
         result += hmrs[i];
         sched_elapsed += hmrtime[i];
+        /* Average lock "depth" is an algorithm-specific auxiliary metric
+           whereby each algorithm can report an approximation of the level
+           of contention it observes.  This estimate is returned from each
+           call to lock_acquire and accumulated per-thread.  These results
+           are then aggregated and averaged here so that an overall view
+           of the run's contention level can be determined. */
         avg_lock_depth += ((double) hmrdepth[i] / (double) hmrs[i]) / (double) num_threads;
     }
 
@@ -169,11 +175,11 @@ int main(int argc, char** argv)
     fprintf(stderr, "%lf average depth\n", avg_lock_depth);
 
     printf("%ld, %f, %lf, %lf, %lf\n",
-                    num_threads,
-                    ((float) sched_elapsed / (float) real_elapsed),
-                    ((double) sched_elapsed)/ ((double) result),
-                    ((double) real_elapsed) / ((double) result),
-	  avg_lock_depth);
+           num_threads,
+           ((float) sched_elapsed / (float) real_elapsed),
+           ((double) sched_elapsed)/ ((double) result),
+           ((double) real_elapsed) / ((double) result),
+           avg_lock_depth);
 }
 
 void* hmr(void *ptr)
@@ -212,7 +218,7 @@ void* hmr(void *ptr)
         CPU_SET(0, &affin_mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
 
-	/* Spin until the appropriate numer of threads have become ready */
+        /* Spin until the appropriate numer of threads have become ready */
         wait64(&ready_lock, nthrds - 1);
         clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
         fetchadd64_release(&sync_lock, 1);
@@ -223,7 +229,7 @@ void* hmr(void *ptr)
         sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
         fetchadd64_release(&ready_lock, 1);
 
-	/* Spin until the "marshal" sets the appropriate bit */
+        /* Spin until the "marshal" sets the appropriate bit */
         wait64(&sync_lock, (nthrds * 2) | 1);
     }
 
