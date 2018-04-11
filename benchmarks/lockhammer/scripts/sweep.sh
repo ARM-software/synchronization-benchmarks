@@ -38,7 +38,7 @@ do
 	if (( $c <= $cores ))
 	then
 		echo Test: ${1} CPU: exectx=$c Date: `date` 1>&2
-		sudo ../build/lh_${1} $c 200000 ${2} ${3}
+		sudo ../build/lh_${1} $c 5000 ${2} ${3}
 		sleep 5s
 	fi
 done

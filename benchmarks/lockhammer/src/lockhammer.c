@@ -105,6 +105,21 @@ int main(int argc, char** argv)
 
     for (i = 0; i < num_threads; ++i) hmrs[i] = 0;
 
+    /* Select the FIFO scheduler.  This prevents interruption of the
+       lockhammer test threads allowing for more precise measuremnet of
+       lock acquisition rate, especially for mutex type locks where
+       a lock-holding or queued thread might significantly delay forward
+       progress if it is rescheduled.  Additionally the FIFO scheduler allows
+       for a better guarantee of the requested contention level by ensuring
+       that a fixed number of threads are executing simultaneously for
+       the duration of the test.  This comes at the significant cost of
+       reduced responsiveness of the system under test and the possibility
+       for system instability if the FIFO scheduled threads remain runnable
+       for too long, starving other processes.  Care should be taken in
+       invocation to ensure that a given instance of lockhammer runs for
+       no more than a few milliseconds and lockhammer should never be run
+       on an already-deplayed system. */
+
     pthread_attr_init(&hmr_attr);
     pthread_attr_setinheritsched(&hmr_attr, PTHREAD_EXPLICIT_SCHED);
     pthread_attr_setschedpolicy(&hmr_attr, SCHED_FIFO);

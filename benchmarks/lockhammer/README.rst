@@ -21,9 +21,13 @@ Build & Run
 
 Simply 'make' in this directory to produce a lockhammer executable for each
 supported algorithm.  In order to more accurately characterize performance
-lockhammer selects the FIFO scheduler and as such must be run as root.
-Some simple scripts for running sweeps of different core counts is available
-in the `scripts/`_. directory.
+lockhammer selects the FIFO scheduler and as such must be run as root.  Be
+Aware that running FIFO scheduled threads on all cores for extended periods
+of time can result in responsiveness and stability issues.  Lockhammer should
+never be run on an already-deployed  system and parameters such as acquires
+per thread and critical section lengths should be tuned to ensure the entire
+run lasts for a short period of time.  Some simple scripts for running sweeps
+of different core counts is available in the `scripts/`_. directory.
 
 Locks or synchronization primitives are stressed by acquiring and releasing
 them at a rate deterimined by a command-line selectable number of critical
