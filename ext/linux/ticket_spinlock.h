@@ -17,7 +17,7 @@
 
 #include "atomics.h"
 
-unsigned long __attribute__((noinline)) lock_acquire (unsigned long *lock, unsigned long threadnum) {
+unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum) {
 	unsigned long depth = 0;
 #if defined(__x86_64__)
 asm volatile (
@@ -84,7 +84,7 @@ asm volatile (
 	return depth;
 }
 
-static inline void lock_release (unsigned long *lock, unsigned long threadnum) {
+static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 #if defined(__x86_64__)
 asm volatile (
 "	addw	$0x2,%[lock]\n"

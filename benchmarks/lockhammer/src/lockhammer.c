@@ -42,9 +42,9 @@
 
 #include ATOMIC_TEST
 
-unsigned long test_lock = 0;
-unsigned long sync_lock = 0;
-unsigned long ready_lock = 0;
+uint64_t test_lock = 0;
+uint64_t sync_lock = 0;
+uint64_t ready_lock = 0;
 
 struct arg {
     unsigned long ncores;

@@ -39,7 +39,7 @@ void cas_rw_lock_init(uint64_t *lock, uint64_t threads) {
 	*lock = CAS_RW_INIT_VAL;
 }
 
-static inline unsigned long lock_acquire (unsigned long *lock, unsigned long threadnum) {
+static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
 	unsigned long val, old;
 
 	old = *(volatile unsigned long *) lock;
@@ -59,6 +59,6 @@ static inline unsigned long lock_acquire (unsigned long *lock, unsigned long thr
 	return 0;
 }
 
-static inline void lock_release (unsigned long *lock, unsigned long threadnum) {
+static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 	fetchadd64_release(lock, 1);
 }

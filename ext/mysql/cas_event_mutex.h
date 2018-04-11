@@ -326,10 +326,10 @@ void event_mutex_init(uint64_t *lock, uint64_t threads) {
 	}
 
 
-static inline unsigned long lock_acquire (unsigned long *lock, unsigned long threadnum) {
+static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
 	return lock_enter(lock, 30, 200);
 }
 
-static inline void lock_release (unsigned long *lock, unsigned long threadnum) {
+static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 	lock_exit(lock);
 }

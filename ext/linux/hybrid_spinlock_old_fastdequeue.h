@@ -43,7 +43,7 @@ struct mcs_spinlock {
 
 struct mcs_spinlock *mcs_pool;
 
-void mcs_init_locks (unsigned long *lock, unsigned long cores) {
+void mcs_init_locks (uint64_t *lock, unsigned long cores) {
 	mcs_pool = (struct mcs_spinlock *) malloc(4 * cores * sizeof(struct mcs_spinlock));
 }
 
@@ -68,7 +68,7 @@ static inline __attribute((pure)) struct mcs_spinlock *decode_tail(u32 tail)
 	return &mcs_pool[4 * cpu + idx];
 }
 
-static __always_inline u32 xchg_tail(unsigned long *lock, u32 tail)
+static __always_inline u32 xchg_tail(uint64_t *lock, u32 tail)
 {
 	/*
 	 * Use release semantics to make sure that the MCS node is properly
@@ -78,7 +78,7 @@ static __always_inline u32 xchg_tail(unsigned long *lock, u32 tail)
 				 tail & _Q_TAIL_MASK);
 }
 
-void hybrid_spinlock_slowpath(unsigned long *lock, unsigned long threadnum)
+void hybrid_spinlock_slowpath(uint64_t *lock, unsigned long threadnum)
 {
 	unsigned long depth = 0;
 	struct mcs_spinlock *prev, *next, *node;
@@ -168,7 +168,7 @@ asm volatile (
 
 }
 
-unsigned long __attribute__((noinline)) lock_acquire (unsigned long *lock, unsigned long threadnum) {
+unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum) {
 	unsigned long depth = 0;
 
 	u32 ticketval;
@@ -259,7 +259,7 @@ asm volatile (
 	return depth;
 }
 
-static inline void lock_release (unsigned long *lock, unsigned long threadnum) {
+static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 #if defined(__x86_64__)
 asm volatile (
 "	addw	$0x2,%[lock]\n"

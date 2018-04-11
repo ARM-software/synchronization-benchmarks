@@ -31,10 +31,10 @@
 
 #include "atomics.h"
 
-static inline unsigned long lock_acquire (unsigned long *lock, unsigned long threadnum) {
+static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
 	return 0;
 }
 
-static inline void lock_release (unsigned long *lock, unsigned long threadnum) {
+static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 	return;
 }

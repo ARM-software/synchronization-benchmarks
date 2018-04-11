@@ -750,7 +750,7 @@ static void jvmObjectMonitorExit(pthread_t thisThread) {
 }
 
 /* Called once to initialize the ObjectMonitor. */
-static void jvm_init_locks(unsigned long *lock, unsigned long cores) {
+static void jvm_init_locks(uint64_t *lock, unsigned long cores) {
     // Initialize the ObjectMonitor
     omonitor = (struct ObjectMonitor*)malloc(sizeof(struct ObjectMonitor));
     omonitor->_owner = NO_THREAD;
@@ -768,13 +768,13 @@ static void jvm_init_locks(unsigned long *lock, unsigned long cores) {
 }
 
 /* Lock interface back to the framework. */
-static inline unsigned long lock_acquire(unsigned long *lock,
+static inline unsigned long lock_acquire(uint64_t *lock,
         unsigned long threadnum) {
     return jvmObjectMonitorEnter(pthread_self());
 }
 
 /* Unlock interface back to the framework. */
-static inline void lock_release(unsigned long *lock,
+static inline void lock_release(uint64_t *lock,
         unsigned long threadnum) {
     jvmObjectMonitorExit(pthread_self());
 }

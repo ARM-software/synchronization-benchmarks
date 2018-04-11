@@ -63,7 +63,7 @@ struct mcs_spinlock {
 
 struct mcs_spinlock *mcs_pool;
 
-void mcs_init_locks (unsigned long *lock, unsigned long cores) {
+void mcs_init_locks (uint64_t *lock, unsigned long cores) {
 	mcs_pool = (struct mcs_spinlock *) malloc(4 * cores * sizeof(struct mcs_spinlock));
 }
 
@@ -443,7 +443,7 @@ release:
 	mcs_pool[4 * threadnum].count--;
 }
 
-unsigned long __attribute__((noinline)) lock_acquire (unsigned long *lock, unsigned long threadnum)
+unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum)
 {
 	u32 val;
 
@@ -456,7 +456,7 @@ unsigned long __attribute__((noinline)) lock_acquire (unsigned long *lock, unsig
 }
 
 
-static inline void lock_release (unsigned long *lock, unsigned long threadnum)
+static inline void lock_release (uint64_t *lock, unsigned long threadnum)
 {
 	smp_store_release((u8 *) lock, 0);
 }
