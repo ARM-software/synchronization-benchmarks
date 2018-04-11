@@ -27,12 +27,25 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 # IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-./sweep.sh incdec_refcount 0 0 > incdec_refcount_0_0.csv
-./sweep.sh cas_lockref 0 0 > cas_lockref_0_0.csv
-./sweep.sh cas_lockref 2000 1000 > cas_lockref_2000_1000.csv
-./sweep.sh swap_mutex 0 0 > swap_mutex_0_0.csv
-./sweep.sh swap_mutex 1000 5000 > swap_mutex_1000_5000.csv
-./sweep.sh ticket_spinlock 0 0 > ticket_spinlock_0_0.csv
-./sweep.sh ticket_spinlock 1000 5000 > ticket_spinlock_1000_5000.csv
-./sweep.sh queued_spinlock 0 0 > queued_spinlock_0_0.csv
-./sweep.sh queued_spinlock 1000 5000 > queued_spinlock_1000_5000.csv
+./sweep.sh incdec_refcount 0 0 > incdec_refcount_0_0_$HOSTNAME.csv
+./sweep.sh cas_lockref 0 0 > cas_lockref_0_0_$HOSTNAME.csv
+./sweep.sh cas_lockref 2000 1000 > cas_lockref_2000_1000_$HOSTNAME.csv
+./sweep.sh ticket_spinlock 0 0 > ticket_spinlock_0_0_$HOSTNAME.csv
+./sweep.sh ticket_spinlock 1000 5000 > ticket_spinlock_1000_5000_$HOSTNAME.csv
+./sweep.sh queued_spinlock 0 0 > queued_spinlock_0_0_$HOSTNAME.csv
+./sweep.sh queued_spinlock 1000 5000 > queued_spinlock_1000_5000_$HOSTNAME.csv
+./sweep.sh event_mutex 0 0 > event_mutex_0_0_$HOSTNAME.csv
+./sweep.sh event_mutex 1000 5000 > event_mutex_1000_5000_$HOSTNAME.csv
+./sweep.sh cas_event_mutex 0 0 > cas_event_mutex_0_0_$HOSTNAME.csv
+./sweep.sh cas_event_mutex 1000 5000 > cas_event_mutex_1000_5000_$HOSTNAME.csv
+./sweep.sh cas_rw_lock 0 0 > cas_rw_lock_0_0_$HOSTNAME.csv
+./sweep.sh cas_rw_lock 2000 1000 > cas_rw_lock_2000_1000_$HOSTNAME.csv
+./sweep.sh hybrid_spinlock 0 0 > hybrid_spinlock_0_0_$HOSTNAME.csv
+./sweep.sh hybrid_spinlock 1000 5000 > hybrid_spinlock_1000_5000_$HOSTNAME.csv
+./sweep.sh hybrid_spinlock_fastdequeue 0 0 > hybrid_spinlock_fastdequeue_0_0_$HOSTNAME.csv
+./sweep.sh hybrid_spinlock_fastdequeue 1000 5000 > hybrid_spinlock_fastdequeue_1000_5000_$HOSTNAME.csv
+./sweep.sh empty 0 0 > empty_0_0_$HOSTNAME.csv
+./sweep.sh jvm_objectmonitor 0 0 > jvm_objectmonitor_0_0_$HOSTNAME.csv
+./sweep.sh jvm_objectmonitor 1000 5000 > jvm_objectmonitor_1000_5000_$HOSTNAME.csv
+./sweep.sh swap_mutex 0 0 > swap_mutex_0_0_$HOSTNAME.csv
+./sweep.sh swap_mutex 1000 5000 > swap_mutex_1000_5000_$HOSTNAME.csv

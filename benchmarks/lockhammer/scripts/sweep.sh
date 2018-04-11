@@ -28,8 +28,17 @@
 # IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 cores=$(grep -c "^processor" /proc/cpuinfo)
-for f in `seq 1 $(($cores))`
+cores_q1=$(($cores / 4))
+cores_q2=$(($cores / 2))
+cores_q3=$(($cores_q1 + $cores_q2))
+cores_all="`seq 24` `seq 8 8 $(($cores))` $cores_q1 $cores_q2 $cores_q3 $cores"
+cores_sort=$(echo $cores_all | tr ' ' '\n' | sort -nu)
+for c in $cores_sort
 do
-	sudo ./lh_${1} $f 50000 ${2} ${3} 
-	sleep 1s
+	if (( $c <= $cores ))
+	then
+		echo Test: ${1} CPU: exectx=$c Date: `date` 1>&2
+		sudo ../build/lh_${1} $c 200000 ${2} ${3}
+		sleep 5s
+	fi
 done
