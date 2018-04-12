@@ -37,8 +37,18 @@ for c in $cores_sort
 do
 	if (( $c <= $cores ))
 	then
+		acquires=50000
+		if (( $c > 8 ))
+		then
+			acquires=$((${acquires}*8/$c))
+			if (( $acquires < 1000 ))
+			then
+				acquires=1000
+			fi
+		fi
+
 		echo Test: ${1} CPU: exectx=$c Date: `date` 1>&2
-		sudo ../build/lh_${1} $c 50000 ${2} ${3}
+		sudo ../build/lh_${1} $c ${acquires} ${2} ${3}
 		sleep 5s
 	fi
 done
