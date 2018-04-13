@@ -31,7 +31,7 @@ cores=$(grep -c "^processor" /proc/cpuinfo)
 cores_q1=$(($cores / 4))
 cores_q2=$(($cores / 2))
 cores_q3=$(($cores_q1 + $cores_q2))
-cores_all="`seq 24` `seq 8 8 $(($cores))` $cores_q1 $cores_q2 $cores_q3 $cores"
+cores_all="`seq 48` `seq 8 8 $(($cores))` $cores_q1 $cores_q2 $cores_q3 $cores"
 cores_sort=$(echo $cores_all | tr ' ' '\n' | sort -nu)
 for c in $cores_sort
 do
