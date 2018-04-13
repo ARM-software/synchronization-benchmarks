@@ -1,0 +1,4 @@
+# Ignore build outputs
+*
+# But recognize build/ directory as part of repo
+!.gitignore
