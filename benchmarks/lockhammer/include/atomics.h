@@ -136,7 +136,7 @@ static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned lon
 	unsigned long tmp, old, newval;
 
 	asm volatile(
-	"1:	ldaxr	%[old], %[ptr]\n"
+	"1:	ldxr	%[old], %[ptr]\n"
 	"	add	%[newval], %[old], %[val]\n"
 	"	stlxr	%w[tmp], %[newval], %[ptr]\n"
 	"	cbnz	%w[tmp], 1b\n"
