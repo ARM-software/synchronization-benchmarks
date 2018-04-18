@@ -38,6 +38,7 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <time.h>
+#include <string.h>
 #include <fcntl.h>
 
 #include ATOMIC_TEST
@@ -46,7 +47,7 @@ uint64_t test_lock = 0;
 uint64_t sync_lock = 0;
 uint64_t ready_lock = 0;
 
-struct arg {
+struct thread_args {
     unsigned long ncores;
     unsigned long nthrds;
     unsigned long iter;
@@ -57,18 +58,31 @@ struct arg {
     unsigned long *nstart;
     unsigned long hold, post;
 };
-typedef struct arg arg;
+typedef struct thread_args thread_args;
+
+struct test_args {
+    unsigned long nthrds;
+    unsigned long nacqrs;
+    unsigned long ncrit;
+    unsigned long nparallel;
+};
+typedef struct test_args test_args;
 
 void* hmr(void *);
+
+void print_usage (char *invoc) {
+    fprintf(stderr,
+"Usage: %s\n\t[-t threads]\n\t[-a acquires per thread]\n\t" \
+"[-c critical iterations]\n\t[-p parallelizable iterations]\n\t" \
+"[-- <test specific arguments>]\n", invoc);
+}
 
 int main(int argc, char** argv)
 {
     struct sched_param sparam;
 
     unsigned long i;
-    unsigned long num_cores, num_threads;
-    unsigned long locks_per_thread;
-    unsigned long lock_hold_work, non_lock_work;
+    unsigned long num_cores;
     unsigned long result;
     unsigned long sched_elapsed = 0, real_elapsed = 0;
     unsigned long start_ns = 0;
@@ -76,34 +90,61 @@ int main(int argc, char** argv)
 
     num_cores = sysconf(_SC_NPROCESSORS_ONLN);
 
-    if (argc == 1) {
-        num_threads = num_cores;
-        locks_per_thread = 50000;
-        lock_hold_work = 0;
-        non_lock_work = 0;
-    }
-    else if (argc == 5) {
-        num_threads = atoi(argv[1]);
-        /* Do not allow number of threads to exceed online cores
-           in order to prevent deadlock ... */
-        num_threads = num_threads > num_cores ? num_cores : num_threads;
-        locks_per_thread = atoi(argv[2]);
-        lock_hold_work = atoi(argv[3]);
-        non_lock_work = atoi(argv[4]);
-    }
-    else {
-        fprintf(stderr, "Usage: %s [<cores> <threads per core> <critical loops> <post-release loops>]\n", argv[0]);
-        return 1;
+    /* Set defaults for all command line options */
+    test_args args = { .nthrds = num_cores,
+                       .nacqrs = 50000,
+                       .ncrit = 0,
+                       .nparallel = 0 };
+
+    for (i = 1; i < argc; i++) {
+        if (strlen(argv[i]) == 2 && argv[i][0] == '-' && i < argc) {
+            switch (argv[i][1]) {
+              case 't':
+                i++;
+                args.nthrds = strtol(argv[i], (char **) NULL, 10);
+                /* Do not allow number of threads to exceed online cores
+                   in order to prevent deadlock ... */
+                args.nthrds > num_cores ? num_cores : args.nthrds;
+                break;
+              case 'a':
+                i++;
+                args.nacqrs = strtol(argv[i], (char **) NULL, 10);
+                break;
+              case 'c':
+                i++;
+                args.ncrit = strtol(argv[i], (char **) NULL, 10);
+                break;
+              case 'p':
+                i++;
+                args.nparallel = strtol(argv[i], (char **) NULL, 10);
+                break;
+              case '-':
+                /* anything after "--" is ignore and passed through to test */
+                i++;
+                parse_test_args(args, argc - i, &argv[i]);
+                /* skip over remaining args since they are parsed by test */
+                i = argc;
+                break;
+              default:
+                print_usage(argv[0]);
+            }
+            if (errno == EINVAL) {
+                print_usage(argv[0]);
+                return 1;
+            }
+        }
+        else {
+            print_usage(argv[0]);
+            return 1;
+        }
     }
 
-    pthread_t hmr_threads[num_threads];
+    pthread_t hmr_threads[args.nthrds];
     pthread_attr_t hmr_attr;
-    unsigned long hmrs[num_threads];
-    unsigned long hmrtime[num_threads]; /* can't touch this */
-    unsigned long hmrdepth[num_threads];
+    unsigned long hmrs[args.nthrds];
+    unsigned long hmrtime[args.nthrds]; /* can't touch this */
+    unsigned long hmrdepth[args.nthrds];
     struct timespec tv_time;
-
-    for (i = 0; i < num_threads; ++i) hmrs[i] = 0;
 
     /* Select the FIFO scheduler.  This prevents interruption of the
        lockhammer test threads allowing for more precise measuremnet of
@@ -128,23 +169,24 @@ int main(int argc, char** argv)
 
     initialize_lock(&test_lock, num_cores);
 
-    arg args[num_threads];
-    for (i = 0; i < num_threads; ++i) {
-        args[i].ncores = num_cores;
-        args[i].nthrds = num_threads;
-        args[i].iter = locks_per_thread;
-        args[i].lock = &test_lock;
-        args[i].rst = &hmrs[i];
-        args[i].nsec = &hmrtime[i];
-        args[i].depth = &hmrdepth[i];
-        args[i].nstart = &start_ns;
-        args[i].hold = lock_hold_work;
-        args[i].post = non_lock_work;
+    thread_args t_args[args.nthrds];
+    for (i = 0; i < args.nthrds; ++i) {
+        hmrs[i] = 0;
+        t_args[i].ncores = num_cores;
+        t_args[i].nthrds = args.nthrds;
+        t_args[i].iter = args.nacqrs;
+        t_args[i].lock = &test_lock;
+        t_args[i].rst = &hmrs[i];
+        t_args[i].nsec = &hmrtime[i];
+        t_args[i].depth = &hmrdepth[i];
+        t_args[i].nstart = &start_ns;
+        t_args[i].hold = args.ncrit;
+        t_args[i].post = args.nparallel;
 
-        pthread_create(&hmr_threads[i], &hmr_attr, hmr, (void*)(&args[i]));
+        pthread_create(&hmr_threads[i], &hmr_attr, hmr, (void*)(&t_args[i]));
     }
 
-    for (i = 0; i < num_threads; ++i) {
+    for (i = 0; i < args.nthrds; ++i) {
         result = pthread_join(hmr_threads[i], NULL);
     }
     /* "Marshal" thread will collect start time once all threads have
@@ -155,7 +197,7 @@ int main(int argc, char** argv)
     pthread_attr_destroy(&hmr_attr);
 
     result = 0;
-    for (i = 0; i < num_threads; ++i) {
+    for (i = 0; i < args.nthrds; ++i) {
         result += hmrs[i];
         sched_elapsed += hmrtime[i];
         /* Average lock "depth" is an algorithm-specific auxiliary metric
@@ -164,7 +206,7 @@ int main(int argc, char** argv)
            call to lock_acquire and accumulated per-thread.  These results
            are then aggregated and averaged here so that an overall view
            of the run's contention level can be determined. */
-        avg_lock_depth += ((double) hmrdepth[i] / (double) hmrs[i]) / (double) num_threads;
+        avg_lock_depth += ((double) hmrdepth[i] / (double) hmrs[i]) / (double) args.nthrds;
     }
 
     fprintf(stderr, "%ld lock loops\n", result);
@@ -175,7 +217,7 @@ int main(int argc, char** argv)
     fprintf(stderr, "%lf average depth\n", avg_lock_depth);
 
     printf("%ld, %f, %lf, %lf, %lf\n",
-           num_threads,
+           args.nthrds,
            ((float) sched_elapsed / (float) real_elapsed),
            ((double) sched_elapsed)/ ((double) result),
            ((double) real_elapsed) / ((double) result),
@@ -185,7 +227,7 @@ int main(int argc, char** argv)
 void* hmr(void *ptr)
 {
     unsigned long nlocks = 0;
-    arg *x = (arg*)ptr;
+    thread_args *x = (thread_args*)ptr;
     int rval;
     unsigned long *lock = x->lock;
     unsigned long target_locks = x->iter;
