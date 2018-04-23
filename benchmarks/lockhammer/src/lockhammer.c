@@ -45,11 +45,14 @@
 uint64_t test_lock = 0;
 uint64_t sync_lock = 0;
 uint64_t ready_lock = 0;
+uint64_t sync_lock0 = 0;
+uint64_t ready_lock0 = 0;
 
 struct arg {
     unsigned long ncores;
     unsigned long nthrds;
     unsigned long iter;
+    unsigned long witer;
     unsigned long *lock;
     unsigned long *rst;
     unsigned long *nsec;
@@ -67,7 +70,7 @@ int main(int argc, char** argv)
 
     unsigned long i;
     unsigned long num_cores, num_threads;
-    unsigned long locks_per_thread;
+    unsigned long locks_per_thread, warmup_locks_per_thread;
     unsigned long lock_hold_work, non_lock_work;
     unsigned long result;
     unsigned long sched_elapsed = 0, real_elapsed = 0;
@@ -81,8 +84,9 @@ int main(int argc, char** argv)
         locks_per_thread = 50000;
         lock_hold_work = 0;
         non_lock_work = 0;
+        warmup_locks_per_thread = 1000000;
     }
-    else if (argc == 5) {
+    else if (argc == 6) {
         num_threads = atoi(argv[1]);
         /* Do not allow number of threads to exceed online cores
            in order to prevent deadlock ... */
@@ -90,9 +94,10 @@ int main(int argc, char** argv)
         locks_per_thread = atoi(argv[2]);
         lock_hold_work = atoi(argv[3]);
         non_lock_work = atoi(argv[4]);
+        warmup_locks_per_thread = atoi(argv[5]);
     }
     else {
-        fprintf(stderr, "Usage: %s [<cores> <threads per core> <critical loops> <post-release loops>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [<threads> <lock iteration per thread> <critical loops> <post-release loops> <warmup loops>]\n", argv[0]);
         return 1;
     }
 
@@ -133,6 +138,7 @@ int main(int argc, char** argv)
         args[i].ncores = num_cores;
         args[i].nthrds = num_threads;
         args[i].iter = locks_per_thread;
+        args[i].witer = warmup_locks_per_thread;
         args[i].lock = &test_lock;
         args[i].rst = &hmrs[i];
         args[i].nsec = &hmrtime[i];
@@ -147,6 +153,7 @@ int main(int argc, char** argv)
     for (i = 0; i < num_threads; ++i) {
         result = pthread_join(hmr_threads[i], NULL);
     }
+
     /* "Marshal" thread will collect start time once all threads have
         reported ready so we only need to collect the end time here */
     clock_gettime(CLOCK_MONOTONIC, &tv_time);
@@ -185,10 +192,12 @@ int main(int argc, char** argv)
 void* hmr(void *ptr)
 {
     unsigned long nlocks = 0;
+    unsigned long wlocks = 0;
     arg *x = (arg*)ptr;
     int rval;
     unsigned long *lock = x->lock;
     unsigned long target_locks = x->iter;
+    unsigned long warmup_locks = x->witer;
     unsigned long ncores = x->ncores;
     unsigned long nthrds = x->nthrds;
     unsigned long hold_count = x->hold;
@@ -209,6 +218,7 @@ void* hmr(void *ptr)
        level */
     mycore = fetchadd64_acquire(&sync_lock, 2) >> 1;
 
+    /* pin the core */
     if (mycore == 0) {
         /* First core to register is a "marshal" who waits for subsequent
            cores to become ready and starts all cores with a write to the
@@ -217,16 +227,39 @@ void* hmr(void *ptr)
         /* Set affinity to core 0 */
         CPU_SET(0, &affin_mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+    } else {
+        /* Calculate affinity mask for my core and set affinity */
+        /* TODO TX2 smt=4, should not use sibling-pairs like intel smt */
+        CPU_SET(((mycore >> 1)) + ((ncores >> 1) * (mycore & 1)), &affin_mask);
+        sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+    }
 
+    /* warmup loop */
+    while(wlocks < warmup_locks) {
+        prefetch64(lock);
+        lock_acquire(lock, mycore);
+        spin_wait(hold_count);
+        lock_release(lock, mycore);
+        spin_wait(post_count);
+        wlocks++;
+    }
+
+    /* wait all threads finish the warmup */
+    if (mycore == 0) {
+        wait64(&ready_lock0, nthrds - 1);
+        fetchadd64_release(&sync_lock0, 1);
+    } else {
+        fetchadd64_release(&ready_lock0, 1);
+        wait64(&sync_lock0, 1);
+    }
+
+    /* lockhammer test */
+    if (mycore == 0) {
         /* Spin until the appropriate numer of threads have become ready */
         wait64(&ready_lock, nthrds - 1);
         clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
         fetchadd64_release(&sync_lock, 1);
-    }
-    else {
-        /* Calculate affinity mask for my core and set affinity */
-        CPU_SET(((mycore >> 1)) + ((ncores >> 1) * (mycore & 1)), &affin_mask);
-        sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+    } else {
         fetchadd64_release(&ready_lock, 1);
 
         /* Spin until the "marshal" sets the appropriate bit */
@@ -235,6 +268,7 @@ void* hmr(void *ptr)
 
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
 
+    /* infinite loop if target_locks is 0 */
     while (!target_locks || nlocks < target_locks) {
         /* Do a lock thing */
         prefetch64(lock);
@@ -245,6 +279,7 @@ void* hmr(void *ptr)
 
         nlocks++;
     }
+
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_end);
 
     if (mycore == 0)
