@@ -48,7 +48,7 @@ do
 		fi
 
 		echo Test: ${1} CPU: exectx=$c Date: `date` 1>&2
-		sudo ../build/lh_${1} $c ${acquires} ${2} ${3}
+		sudo ../build/lh_${1} $c ${acquires} ${2} ${3} ${4}
 		sleep 5s
 	fi
 done
