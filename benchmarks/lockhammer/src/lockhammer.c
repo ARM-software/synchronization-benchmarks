@@ -41,32 +41,13 @@
 #include <string.h>
 #include <fcntl.h>
 
+#include "lockhammer.h"
+
 #include ATOMIC_TEST
 
 uint64_t test_lock = 0;
 uint64_t sync_lock = 0;
 uint64_t ready_lock = 0;
-
-struct thread_args {
-    unsigned long ncores;
-    unsigned long nthrds;
-    unsigned long iter;
-    unsigned long *lock;
-    unsigned long *rst;
-    unsigned long *nsec;
-    unsigned long *depth;
-    unsigned long *nstart;
-    unsigned long hold, post;
-};
-typedef struct thread_args thread_args;
-
-struct test_args {
-    unsigned long nthrds;
-    unsigned long nacqrs;
-    unsigned long ncrit;
-    unsigned long nparallel;
-};
-typedef struct test_args test_args;
 
 void* hmr(void *);
 
