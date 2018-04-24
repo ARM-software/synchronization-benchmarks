@@ -108,6 +108,7 @@ int main(int argc, char** argv)
                 break;
               default:
                 print_usage(argv[0]);
+                return 1;
             }
             if (errno == EINVAL) {
                 print_usage(argv[0]);
