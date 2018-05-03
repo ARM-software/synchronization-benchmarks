@@ -53,9 +53,9 @@ void* hmr(void *);
 
 void print_usage (char *invoc) {
     fprintf(stderr,
-"Usage: %s\n\t[-t threads]\n\t[-a acquires per thread]\n\t" \
-"[-c critical iterations]\n\t[-p parallelizable iterations]\n\t" \
-"[-- <test specific arguments>]\n", invoc);
+            "Usage: %s\n\t[-t threads]\n\t[-a acquires per thread]\n\t"
+            "[-c critical iterations]\n\t[-p parallelizable iterations]\n\t"
+            "[-- <test specific arguments>]\n", invoc);
 }
 
 int main(int argc, char** argv)
@@ -77,49 +77,34 @@ int main(int argc, char** argv)
                        .ncrit = 0,
                        .nparallel = 0 };
 
-    for (i = 1; i < argc; i++) {
-        if (strlen(argv[i]) == 2 && argv[i][0] == '-' && i < argc) {
-            switch (argv[i][1]) {
-              case 't':
-                i++;
-                args.nthrds = strtol(argv[i], (char **) NULL, 10);
-                /* Do not allow number of threads to exceed online cores
-                   in order to prevent deadlock ... */
-                args.nthrds > num_cores ? num_cores : args.nthrds;
-                break;
-              case 'a':
-                i++;
-                args.nacqrs = strtol(argv[i], (char **) NULL, 10);
-                break;
-              case 'c':
-                i++;
-                args.ncrit = strtol(argv[i], (char **) NULL, 10);
-                break;
-              case 'p':
-                i++;
-                args.nparallel = strtol(argv[i], (char **) NULL, 10);
-                break;
-              case '-':
-                /* anything after "--" is ignore and passed through to test */
-                i++;
-                parse_test_args(args, argc - i, &argv[i]);
-                /* skip over remaining args since they are parsed by test */
-                i = argc;
-                break;
-              default:
-                print_usage(argv[0]);
-                return 1;
-            }
-            if (errno == EINVAL) {
-                print_usage(argv[0]);
-                return 1;
-            }
-        }
-        else {
+    opterr = 0;
+
+    while ((i = getopt(argc, argv, "t:a:c:p:")) != -1)
+    {
+        switch (i) {
+          case 't':
+            args.nthrds = strtol(optarg, (char **) NULL, 10);
+            /* Do not allow number of threads to exceed online cores
+               in order to prevent deadlock ... */
+            args.nthrds > num_cores ? num_cores : args.nthrds;
+            break;
+          case 'a':
+            args.nacqrs = strtol(optarg, (char **) NULL, 10);
+            break;
+          case 'c':
+            args.ncrit = strtol(optarg, (char **) NULL, 10);
+            break;
+          case 'p':
+            args.nparallel = strtol(optarg, (char **) NULL, 10);
+            break;
+          case '?':
+          default:
             print_usage(argv[0]);
             return 1;
         }
     }
+
+    parse_test_args(args, argc - optind, &argv[optind]);
 
     pthread_t hmr_threads[args.nthrds];
     pthread_attr_t hmr_attr;
