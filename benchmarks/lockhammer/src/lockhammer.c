@@ -81,21 +81,52 @@ int main(int argc, char** argv)
 
     while ((i = getopt(argc, argv, "t:a:c:p:")) != -1)
     {
+        long optval = 0;
         switch (i) {
           case 't':
-            args.nthrds = strtol(optarg, (char **) NULL, 10);
+            optval = strtol(optarg, (char **) NULL, 10);
             /* Do not allow number of threads to exceed online cores
                in order to prevent deadlock ... */
-            args.nthrds > num_cores ? num_cores : args.nthrds;
+            if (optval < 0) {
+                fprintf(stderr, "ERROR: thread count must be positive.\n");
+                return 1;
+            }
+            else if (optval <= num_cores) {
+                args.nthrds = optval;
+            }
+            else {
+                fprintf(stderr, "WARNING: limiting thread count to online cores (%d).\n", num_cores);
+            }
             break;
           case 'a':
-            args.nacqrs = strtol(optarg, (char **) NULL, 10);
+            optval = strtol(optarg, (char **) NULL, 10);
+            if (optval < 0) {
+                fprintf(stderr, "ERROR: acquire count must be positive.\n");
+                return 1;
+            }
+            else {
+                args.nacqrs = optval;
+            }
             break;
           case 'c':
-            args.ncrit = strtol(optarg, (char **) NULL, 10);
+            optval = strtol(optarg, (char **) NULL, 10);
+            if (optval < 0) {
+                fprintf(stderr, "ERROR: critical iteration count must be positive.\n");
+                return 1;
+            }
+            else {
+                args.ncrit = optval;
+            }
             break;
           case 'p':
-            args.nparallel = strtol(optarg, (char **) NULL, 10);
+            optval = strtol(optarg, (char **) NULL, 10);
+            if (optval < 0) {
+                fprintf(stderr, "ERROR: parallel iteration count must be positive.\n");
+                return 1;
+            }
+            else {
+                args.nparallel = optval;
+            }
             break;
           case '?':
           default:
