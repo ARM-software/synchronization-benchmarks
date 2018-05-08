@@ -65,7 +65,7 @@ int main(int argc, char** argv)
     unsigned long i;
     unsigned long num_cores;
     unsigned long result;
-    unsigned long sched_elapsed = 0, real_elapsed = 0;
+    unsigned long sched_elapsed = 0, real_elapsed = 0, realcpu_elapsed = 0;
     unsigned long start_ns = 0;
     double avg_lock_depth = 0.0;
 
@@ -141,6 +141,7 @@ int main(int argc, char** argv)
     pthread_attr_t hmr_attr;
     unsigned long hmrs[args.nthrds];
     unsigned long hmrtime[args.nthrds]; /* can't touch this */
+    unsigned long hmrrealtime[args.nthrds];
     unsigned long hmrdepth[args.nthrds];
     struct timespec tv_time;
 
@@ -176,6 +177,7 @@ int main(int argc, char** argv)
         t_args[i].lock = &test_lock;
         t_args[i].rst = &hmrs[i];
         t_args[i].nsec = &hmrtime[i];
+        t_args[i].real_nsec = &hmrrealtime[i];
         t_args[i].depth = &hmrdepth[i];
         t_args[i].nstart = &start_ns;
         t_args[i].hold = args.ncrit;
@@ -198,6 +200,7 @@ int main(int argc, char** argv)
     for (i = 0; i < args.nthrds; ++i) {
         result += hmrs[i];
         sched_elapsed += hmrtime[i];
+        realcpu_elapsed += hmrrealtime[i];
         /* Average lock "depth" is an algorithm-specific auxiliary metric
            whereby each algorithm can report an approximation of the level
            of contention it observes.  This estimate is returned from each
@@ -210,14 +213,16 @@ int main(int argc, char** argv)
     fprintf(stderr, "%ld lock loops\n", result);
     fprintf(stderr, "%ld ns scheduled\n", sched_elapsed);
     fprintf(stderr, "%ld ns elapsed (~%f cores)\n", real_elapsed, ((float) sched_elapsed / (float) real_elapsed));
-    fprintf(stderr, "%lf ns per access\n", ((double) sched_elapsed)/ ((double) result));
+    fprintf(stderr, "%lf ns per access (scheduled)\n", ((double) sched_elapsed)/ ((double) result));
+    fprintf(stderr, "%lf ns per access (real)\n", ((double) realcpu_elapsed)/ ((double) result));
     fprintf(stderr, "%lf ns access rate\n", ((double) real_elapsed) / ((double) result));
     fprintf(stderr, "%lf average depth\n", avg_lock_depth);
 
-    printf("%ld, %f, %lf, %lf, %lf\n",
+    printf("%ld, %f, %lf, %lf, %lf, %lf\n",
            args.nthrds,
            ((float) sched_elapsed / (float) real_elapsed),
            ((double) sched_elapsed)/ ((double) result),
+           ((double) realcpu_elapsed)/ ((double) result),
            ((double) real_elapsed) / ((double) result),
            avg_lock_depth);
 }
@@ -236,8 +241,8 @@ void* hmr(void *ptr)
 
     unsigned long mycore = 0;
 
-    struct timespec tv_monot_start, tv_start, tv_end;
-    unsigned long ns_elap;
+    struct timespec tv_monot_start, tv_monot_end, tv_start, tv_end;
+    unsigned long ns_elap, real_ns_elap;
     unsigned long total_depth = 0;
 
     cpu_set_t affin_mask;
@@ -271,6 +276,7 @@ void* hmr(void *ptr)
 
         /* Spin until the "marshal" sets the appropriate bit */
         wait64(&sync_lock, (nthrds * 2) | 1);
+        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
     }
 
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
@@ -285,15 +291,18 @@ void* hmr(void *ptr)
 
         nlocks++;
     }
+    clock_gettime(CLOCK_MONOTONIC, &tv_monot_end);
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_end);
 
     if (mycore == 0)
         *(x->nstart) = (1000000000ul * tv_monot_start.tv_sec + tv_monot_start.tv_nsec);
 
     ns_elap = (1000000000ul * tv_end.tv_sec + tv_end.tv_nsec) - (1000000000ul * tv_start.tv_sec + tv_start.tv_nsec);
+    real_ns_elap = (1000000000ul * tv_monot_end.tv_sec + tv_monot_end.tv_nsec) - (1000000000ul * tv_monot_start.tv_sec + tv_monot_start.tv_nsec);
 
     *(x->rst) = nlocks;
     *(x->nsec) = ns_elap;
+    *(x->real_nsec) = real_ns_elap;
     *(x->depth) = total_depth;
 
     return NULL;
