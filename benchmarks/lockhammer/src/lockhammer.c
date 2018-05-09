@@ -135,7 +135,7 @@ int main(int argc, char** argv)
         }
     }
 
-    parse_test_args(args, argc - optind, &argv[optind]);
+    parse_test_args(args, argc, argv);
 
     pthread_t hmr_threads[args.nthrds];
     pthread_attr_t hmr_attr;

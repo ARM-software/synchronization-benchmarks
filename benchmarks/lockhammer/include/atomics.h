@@ -81,6 +81,44 @@ static inline void prefetch64 (unsigned long *ptr) {
 #endif
 }
 
+static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsigned long val) {
+#if defined(__x86_64__)
+	asm volatile ("lock xaddq %q0, %1\n"
+		      : "+r" (val), "+m" (*(ptr))
+		      : : "memory", "cc");
+#elif defined(__aarch64__)
+#if defined(USE_LSE)
+	unsigned long old;
+
+	asm volatile(
+	"	ldaddal	%[val], %[old], %[ptr]\n"
+	: [old] "=&r" (old), [ptr] "+Q" (*(unsigned long *)ptr)
+	: [val] "r" (val)
+	: );
+
+	val = old;
+#else
+	unsigned long tmp, old, newval;
+
+	asm volatile(
+	"1:	ldaxr	%[old], %[ptr]\n"
+	"	add	%[newval], %[old], %[val]\n"
+	"	stlxr	%w[tmp], %[newval], %[ptr]\n"
+	"	cbnz	%w[tmp], 1b\n"
+	: [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval),
+	  [ptr] "+Q" (*(unsigned long *)ptr)
+	: [val] "Lr" (val)
+	: );
+
+	val = old;
+#endif
+#else
+	/* TODO: builtin atomic call */
+#endif
+
+	return val;
+}
+
 static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned long val) {
 #if defined(__x86_64__)
 	asm volatile ("lock xaddq %q0, %1\n"
