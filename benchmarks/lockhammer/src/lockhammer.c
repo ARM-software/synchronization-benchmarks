@@ -95,7 +95,7 @@ int main(int argc, char** argv)
                 args.nthrds = optval;
             }
             else {
-                fprintf(stderr, "WARNING: limiting thread count to online cores (%d).\n", num_cores);
+                fprintf(stderr, "WARNING: limiting thread count to online cores (%ld).\n", num_cores);
             }
             break;
           case 'a':
@@ -220,13 +220,15 @@ int main(int argc, char** argv)
            ((double) sched_elapsed)/ ((double) result),
            ((double) real_elapsed) / ((double) result),
            avg_lock_depth);
+
+    return 0;
 }
 
 void* hmr(void *ptr)
 {
     unsigned long nlocks = 0;
     thread_args *x = (thread_args*)ptr;
-    int rval;
+
     unsigned long *lock = x->lock;
     unsigned long target_locks = x->iter;
     unsigned long ncores = x->ncores;
