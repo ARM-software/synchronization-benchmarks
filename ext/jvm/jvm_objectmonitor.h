@@ -29,6 +29,10 @@
 #include <pthread.h>
 #include <time.h>
 
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
 #define initialize_lock(lock, threads) jvm_init_locks(lock, threads);
 
 #include "atomics.h"

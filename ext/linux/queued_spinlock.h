@@ -17,6 +17,9 @@
  */
 
 /* Based on Cavuim Queued Spinlock patches applied to Linux 4.13 */
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
 
 #define initialize_lock(lock, threads) mcs_init_locks(lock, threads)
 
