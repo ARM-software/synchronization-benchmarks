@@ -128,6 +128,7 @@ static inline void __TBB_machine_or(volatile void* operand, uint64_t addend) {
     : );
 #endif  /* USE_LSE */
 #else
+    /* Arch independent implementation */
     for(;;) {
         uintptr_t tmp = *(volatile uintptr_t *)operand;
         uintptr_t result = __TBB_machine_cmpswp8(operand, tmp|addend, tmp);
@@ -164,6 +165,7 @@ static inline void __TBB_machine_and(volatile void* operand, uint64_t addend) {
     : );
 #endif  /* USE_LSE */
 #else
+    /* Arch independent implementation */
     for(;;) {
         uintptr_t tmp = *(volatile uintptr_t *)operand;
         uintptr_t result = __TBB_machine_cmpswp8(operand, tmp&addend, tmp);
