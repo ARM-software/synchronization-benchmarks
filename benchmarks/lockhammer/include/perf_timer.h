@@ -54,8 +54,12 @@
 #include <unistd.h>    /* for access() */
 #include <math.h>
 
+#include "atomics.h"
+
 extern __thread uint64_t prev_tsc;
-extern __thread uint64_t cnt_freq;
+
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 /* Cautionary note about using the invariant TSC on x86:
    Depending upon the model of CPU, TSC may
@@ -257,7 +261,8 @@ timer_init() {
 }
 
 static inline uint32_t __attribute__((always_inline))
-timer_get_cnt_freq(void) {
+timer_get_cnt_freq(void)
+{
     uint32_t cnt_freq;
 #ifdef __aarch64__
         __asm__ __volatile__ ("isb; mrs %0, cntfrq_el0" : "=r" (cnt_freq));
@@ -317,28 +322,23 @@ void __attribute__((noinline, optimize("no-unroll-loops"))) blackhole(unsigned l
 }
 
 
-__thread unsigned long LOOP_TEST_OVERHEAD = 0;
-unsigned long __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_loop_overhead(const unsigned long NUMTRIES) {
-    if (LOOP_TEST_OVERHEAD) {return LOOP_TEST_OVERHEAD;}
-    unsigned long outer_cycles_start, outer_cycles_end;
+int64_t __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_loop_overhead(const unsigned long NUMTRIES)
+{
+    uint64_t LOOP_TEST_OVERHEAD = 0;
+    int64_t outer_cycles_start, outer_cycles_end;
     unsigned long i, j;
-    unsigned long outer_elapsed_total = 0;
+    int64_t outer_elapsed_total = 0;
 
-    // get cpu out of low power state or into high power state
-    for (i = 0; i < 10000; i++){
-        blackhole(100000);
-    }
     for (j = 0; j < 1000; j++) {
-        unsigned long elapsed_total = 0;
+        int64_t elapsed_total = 0;
         outer_cycles_start = timer_get_counter_start();
         for (i = 0; i < NUMTRIES; i++) {
 
-            unsigned long cycles_start, cycles_end;
+            uint64_t cycles_start, cycles_end;
             cycles_start = timer_get_counter_start();
             cycles_end = timer_get_counter_end();
 
-            unsigned long elapsed  = cycles_end - cycles_start;
-                    // printf("elapsed = %lu\n", elapsed);
+            int64_t elapsed  = MAX((int64_t)(cycles_end - cycles_start), 0);
             elapsed_total += elapsed;
         }
         outer_cycles_end = timer_get_counter_end();
@@ -349,42 +349,48 @@ unsigned long __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_lo
     return LOOP_TEST_OVERHEAD;
 }
 
-__thread unsigned long TIMER_OVERHEAD = 0;
-unsigned long evaluate_timer_overhead(void) {
-    if (TIMER_OVERHEAD) {return TIMER_OVERHEAD;}
-    unsigned long outer_cycles_start, outer_cycles_end;
+
+int64_t evaluate_timer_overhead(void)
+{
+    uint64_t TIMER_OVERHEAD = 0;
+    int64_t outer_cycles_start, outer_cycles_end;
     outer_cycles_start = timer_get_counter_start();
     outer_cycles_end = timer_get_counter_end();
-    unsigned long elapsed  = outer_cycles_end - outer_cycles_start;
+    // Force measurement to 0 if it somehow goes negative
+    int64_t elapsed  = MAX(outer_cycles_end - outer_cycles_start, 0);
     TIMER_OVERHEAD = elapsed;
     return TIMER_OVERHEAD;
 }
 
-unsigned long __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_blackhole(const unsigned long tokens_mid, const unsigned long NUMTRIES) {
+
+int64_t  __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_blackhole(
+        const unsigned long tokens_mid, const unsigned long NUMTRIES)
+{
     unsigned long i, j;
-    unsigned long outer_cycles_start, outer_cycles_end;
-    unsigned long sum_elapsed_total = 0;
-    unsigned long avg_elapsed_total = 0;
-    unsigned long outer_elapsed_total;
-    unsigned long outer_inner_diff;
+    int64_t outer_cycles_start, outer_cycles_end;
+    int64_t sum_elapsed_total = 0;
+    int64_t avg_elapsed_total = 0;
+    int64_t outer_elapsed_total;
+    int64_t outer_inner_diff;
+    int64_t elapsed_total_diff;
     double percent;
 
-    unsigned long LOOP_TEST_OVERHEAD = evaluate_loop_overhead(NUMTRIES);
-    unsigned long TIMER_OVERHEAD = evaluate_timer_overhead();
+    int64_t LOOP_TEST_OVERHEAD = evaluate_loop_overhead(NUMTRIES);
+    int64_t TIMER_OVERHEAD = evaluate_timer_overhead();
 
-    for (j = 0; j < 5; j++) {
+    for (j = 0; j < NUMTRIES; j++) {
 
-        unsigned long elapsed_total = 0;
+        int64_t elapsed_total = 0;
 
         outer_cycles_start = timer_get_counter_start();
         for (i = 0; i < NUMTRIES; i++) {
 
-            unsigned long cycles_start, cycles_end;
+            uint64_t cycles_start, cycles_end;
             cycles_start = timer_get_counter_start();
             blackhole(tokens_mid);
             cycles_end = timer_get_counter_end();
 
-            unsigned long elapsed  = cycles_end - cycles_start;
+            uint64_t elapsed  = cycles_end - cycles_start;
                     // printf("elapsed = %lu\n", elapsed);
 
             elapsed_total += elapsed;
@@ -392,45 +398,27 @@ unsigned long __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_bl
         outer_cycles_end = timer_get_counter_end();
 
         outer_elapsed_total = outer_cycles_end - outer_cycles_start;
-        outer_inner_diff = (outer_elapsed_total - elapsed_total);
+        outer_inner_diff = abs(outer_elapsed_total - elapsed_total);
+
+        // Force measurements to zero if overhead swamps loop run time, in this
+        // case we can't measure this low of a requested time accurately.
+        sum_elapsed_total += MAX((int64_t)(elapsed_total - TIMER_OVERHEAD*NUMTRIES), 0);
+        avg_elapsed_total = sum_elapsed_total / (j + 1);
+        elapsed_total_diff = abs(avg_elapsed_total - elapsed_total);
+
+#ifdef DDEBUG
         if (outer_inner_diff > LOOP_TEST_OVERHEAD) {
             percent = outer_inner_diff / (double) LOOP_TEST_OVERHEAD;
         } else {
             percent =  LOOP_TEST_OVERHEAD/ (double) outer_inner_diff;
         }
 
-#ifdef DDEBUG
         printf("outer_elapsed_total = %lu "
                "elapsed_total = %lu "
-               "outer_inner_diff = %lu percent = %f\n",
-               outer_elapsed_total, elapsed_total, outer_inner_diff, percent);
+               "outer_inner_diff = %lu percent_oh = %f percent_loop = %f\n",
+               outer_elapsed_total, elapsed_total, outer_inner_diff, percent,
+               (double) elapsed_total_diff / avg_elapsed_total);
 #endif
-
-        if (percent > THRESHOLD) {
-            // try again because loop overhead was more than expected
-            j--;
-            continue;
-        }
-
-        if (sum_elapsed_total == 0) {
-            // first time around
-            sum_elapsed_total = elapsed_total - TIMER_OVERHEAD*NUMTRIES;
-            continue;
-        }
-
-        avg_elapsed_total = sum_elapsed_total / j;
-
-        long elapsed_total_diff = abs(avg_elapsed_total - elapsed_total);
-
-        if (((double) elapsed_total_diff / avg_elapsed_total) > THRESHOLD) {
-            // ignore outliers
-            j--;
-            continue;
-        }
-
-        sum_elapsed_total += elapsed_total - TIMER_OVERHEAD*NUMTRIES;
-        avg_elapsed_total = sum_elapsed_total / (j + 1);
-
     }
 
     // returns average duration of NUMTRIES calls to blackhole with tokens_mid
@@ -438,15 +426,17 @@ unsigned long __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_bl
     return result;
 }
 
-
-unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low, unsigned long tokens_high) {
+unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low, unsigned long tokens_high,
+        unsigned long core_id)
+{
     unsigned long tokens_diff = tokens_high - tokens_low;
     unsigned long tokens_mid = (tokens_diff / 2) + tokens_low;
-    unsigned long NUMTRIES = 10;
+    unsigned long NUMTRIES = 15;
     unsigned long target_elapsed_total = NUMTRIES * target;
 
 #ifdef DDEBUG
-    printf("target = %lu, target_elapsed_total = %lu, tokens_low = %lu, tokens_high = %lu, tokens_diff = %lu, tokens_mid = %lu\n",
+    printf("target = %lu, target_elapsed_total = %lu, tokens_low = %lu, tokens_high = %lu, "
+           "tokens_diff = %lu, tokens_mid = %lu\n",
             target, target_elapsed_total, tokens_low, tokens_high, tokens_diff, tokens_mid);
 #endif
 
@@ -456,6 +446,12 @@ unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low
         unsigned long ret_low = evaluate_blackhole(tokens_low, NUMTRIES);
         unsigned long ret_high = evaluate_blackhole(tokens_high, NUMTRIES);
 
+#ifdef DEBUG
+    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n",
+            core_id, ret_low, tokens_low, target_elapsed_total);
+    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n",
+            core_id, ret_high, tokens_high, target_elapsed_total);
+#endif
         long low_diff = abs(ret_low - target_elapsed_total);    
         long high_diff = abs(ret_high - target_elapsed_total);
 
@@ -474,17 +470,17 @@ unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low
         return tokens_high;
     }
 
-
+    // Measure if this # of tokens is the proper #.
     unsigned long t = evaluate_blackhole(tokens_mid, NUMTRIES);
-
+ 
 #ifdef DEBUG
-    printf("t = %lu, target_elapsed_total = %lu\n", t, target_elapsed_total);
+    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n", core_id, t, tokens_mid, target_elapsed_total);
 #endif
 
     if (t > target_elapsed_total) {
-        tokens_mid = calibrate_blackhole(target, tokens_low, tokens_mid);
+        tokens_mid = calibrate_blackhole(target, tokens_low, tokens_mid, core_id);
     } else if (t < target_elapsed_total) {
-        tokens_mid = calibrate_blackhole(target, tokens_mid, tokens_high);
+        tokens_mid = calibrate_blackhole(target, tokens_mid, tokens_high, core_id);
     }
 
     return tokens_mid;

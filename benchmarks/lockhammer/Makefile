@@ -1,5 +1,7 @@
 CFLAGS=-g -O2 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include
-LDFLAGS=-lpthread
+#CFLAGS+=-DDEBUG
+#CFLAGS+=-DDDEBUG
+LDFLAGS=-lpthread -lm
 # LSE support is experimental, please enable the below CFLAGS with caution
 # CFLAGS=-O2 -march=armv8-a+lse -DUSE_LSE -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include
 

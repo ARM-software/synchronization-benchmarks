@@ -210,7 +210,7 @@ int main(int argc, char** argv)
 
     initialize_lock(&test_lock, num_cores);
     // Get frequency of clock, and divide by 1B to get # of ticks per ns
-    tickspns = timer_get_cnt_freq() / 1000000000ULL; 
+    tickspns = (double)timer_get_cnt_freq() / 1000000000.0; 
 
     thread_args t_args[args.nthrds];
     for (i = 0; i < args.nthrds; ++i) {
@@ -277,21 +277,35 @@ int main(int argc, char** argv)
     return 0;
 }
 
-// Macro to calculate timer spin-times.  First calibrate the wait loop
-// by doing a binary search around an estimated number of ticks.
-#define CALIBRATE_TIMER() \
-    if (x->hold_unit == NS) { \
-        unsigned long hold = (unsigned long)((double)hold_count * tickspns); \
-        hold_count = calibrate_blackhole(hold, 0, TOKENS_MAX_HIGH); \
-    } else { \
-        hold_count = hold_count / 2; \
-    } \
-    if (x->post_unit == NS) { \
-        unsigned long post = (unsigned long)((double)post_count * tickspns); \
-        post_count = calibrate_blackhole(post, 0, TOKENS_MAX_HIGH); \
-    } else { \
-        post_count = post_count / 2; \
+/* Calculate timer spin-times where we do not access the clock.  
+ * First calibrate the wait loop by doing a binary search around 
+ * an estimated number of ticks. All threads participate to take
+ * into account pipeline effects of threading.
+ */
+static void calibrate_timer(thread_args *x, unsigned long mycore)
+{
+    if (x->hold_unit == NS) {
+        /* Determine how many timer ticks would happen for this wait time */
+        unsigned long hold = (unsigned long)((double)x->hold * x->tickspns);
+        /* Calibrate the number of loops we have to do */
+        x->hold = calibrate_blackhole(hold, 0, TOKENS_MAX_HIGH, mycore);
+    } else {
+        x->hold = x->hold / 2;
     }
+
+    // Make sure to re-sync any stragglers
+    synchronize_threads(&calibrate_lock, x->nthrds);
+
+    if (x->post_unit == NS) {
+        unsigned long post = (unsigned long)((double)x->post * x->tickspns);
+        x->post = calibrate_blackhole(post, 0, TOKENS_MAX_HIGH, mycore);
+    } else {
+        x->post = x->post / 2;
+    }
+#ifdef DEBUG
+    printf("Calibrated (%lu) with hold=%ld post=%ld\n", mycore, x->hold, x->post);
+#endif
+}
 
 void* hmr(void *ptr)
 {
@@ -335,15 +349,13 @@ void* hmr(void *ptr)
         wait64(&ready_lock, nthrds - 1);
         fetchadd64_release(&sync_lock, 1);
 
-        /* if units are in terms of ns, need to calibrate the wait loop 
-         */
-        CALIBRATE_TIMER();
-        /* Wait for all threads to arrive at next barrier after main thread
-         * calibrates the wait loop. 
-         */
-        wait64(&calibrate_lock, (nthrds - 1) * 2);
+        calibrate_timer(x, mycore);
+        hold_count = x->hold;
+        post_count = x->post;
+
+        /* Wait for all threads to arrive from calibrating. */ 
+        synchronize_threads(&calibrate_lock, nthrds);
         clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
-        fetchadd64_release(&calibrate_lock, 1);
     }
     else {
         /* Calculate affinity mask for my core and set affinity */
@@ -383,13 +395,20 @@ void* hmr(void *ptr)
 
         /* Spin until the "marshal" sets the appropriate bit */
         wait64(&sync_lock, (nthrds * 2) | 1);
-        //TODO: Need more extensive testing on whether we need
-        //      multiple calibration loops to run.
-        //CALIBRATE_TIMER();
-        /* Synchronize with main thread loop calibration */
-        fetchadd64_release(&calibrate_lock, 2);
-        wait64(&calibrate_lock, ((nthrds - 1) * 2) | 1);
+
+        /* All threads participate in calibration */
+        calibrate_timer(x, mycore);
+        hold_count = x->hold;
+        post_count = x->post;
+
+        /* Wait for all threads to arrive from calibrating */
+        synchronize_threads(&calibrate_lock, nthrds);
     }
+
+#ifdef DDEBUG
+    printf("%ld %ld\n", hold_count, post_count);
+#endif
+
     clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
 
