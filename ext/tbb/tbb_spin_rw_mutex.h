@@ -22,6 +22,7 @@
  *  Based on:
  *
  *      Project: github.com/01org/tbb, File: tbb/include/tbb/spin_rw_mutex.h
+ *      Tag: 2018_U3-0-g633b01a
  *
  *  Description:
  *
