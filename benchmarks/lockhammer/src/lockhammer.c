@@ -40,6 +40,7 @@
 #include <time.h>
 #include <string.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include "lockhammer.h"
 

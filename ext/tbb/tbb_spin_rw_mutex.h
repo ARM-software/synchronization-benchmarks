@@ -153,14 +153,24 @@ inline uint8_t is_writer(unsigned long i, uint8_t val) {
 }
 
 void tbb_print_usage() {
-    fprintf(stderr, " tbb_spin_rw_mutex\n");
+    fprintf(stderr, "tbb_spin_rw_mutex additional options:\n");
     fprintf(stderr, "\t[-h print this msg]\n");
     fprintf(stderr, "\t[-r reader/writer log ratio, default: 6 (2^(6)-1 readers per writer)]\n");
     fprintf(stderr, "\t[-m pure reader cpu mask, default: 0x0 (no pure readers)]\n");
 }
 
+void tbb_check_strtoul(int rval, char* endptr) {
+    if ((errno == ERANGE && (rval == ULONG_MAX))
+            || (errno != 0 && rval == 0) || endptr == optarg) {
+        fprintf(stderr, "tbb_spin_rw_mutex: value unsuitable for 'unsigned long'\n\n");
+        tbb_print_usage();
+        exit(1);
+    }
+}
+
 void tbb_parse_args(test_args unused, int argc, char** argv) {
     int i = 0;
+    char *endptr;
 
     log2_ratio = 6;
     reader_cpu_mask = 0x0;
@@ -169,22 +179,22 @@ void tbb_parse_args(test_args unused, int argc, char** argv) {
     {
         switch (i) {
           case 'r':
-            log2_ratio = strtoul(optarg, (char **) NULL, 10);
+            errno = 0;
+            log2_ratio = strtoul(optarg, &endptr, 10);
+            tbb_check_strtoul(log2_ratio, endptr);
             if (log2_ratio >= 64) {
                 fprintf(stderr, "tbb_spin_rw_mutex: -r can not be >= 64\n");
                 exit(1);
             }
             break;
           case 'm':
+            errno = 0;
             if (!strncmp(optarg, "0x", 2))
-                reader_cpu_mask = strtoul(optarg, (char **) NULL, 16);
+                reader_cpu_mask = strtoul(optarg, &endptr, 16);
             else
-                reader_cpu_mask = strtoul(optarg, (char **) NULL, 10);
-            if (errno == ERANGE) {
-                fprintf(stderr,
-                        "tbb_spin_rw_mutex: -m value unsuitable for 'unsigned long'\n");
-                exit (1);
-            }
+                reader_cpu_mask = strtoul(optarg, &endptr, 10);
+
+            tbb_check_strtoul(reader_cpu_mask, endptr);
             break;
           case 'h':
             tbb_print_usage();
@@ -193,10 +203,6 @@ void tbb_parse_args(test_args unused, int argc, char** argv) {
           default:
             tbb_print_usage();
             exit(3);
-        }
-        if (errno == EINVAL) {
-            tbb_print_usage();
-            exit(2);
         }
     }
 }
