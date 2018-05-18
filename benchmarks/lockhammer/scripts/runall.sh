@@ -49,3 +49,5 @@
 ./sweep.sh jvm_objectmonitor 1000 5000 > jvm_objectmonitor_1000_5000_$HOSTNAME.csv
 ./sweep.sh swap_mutex 0 0 > swap_mutex_0_0_$HOSTNAME.csv
 ./sweep.sh swap_mutex 1000 5000 > swap_mutex_1000_5000_$HOSTNAME.csv
+./sweep.sh spin_rw_mutex 0 0 > spin_rw_mutex_0_0_$HOSTNAME.csv
+./sweep.sh spin_rw_mutex 1000 5000 > spin_rw_mutex_1000_5000_$HOSTNAME.csv
