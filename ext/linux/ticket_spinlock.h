@@ -14,6 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* Based on Linux 4.13 */
 
 #include "atomics.h"
 
