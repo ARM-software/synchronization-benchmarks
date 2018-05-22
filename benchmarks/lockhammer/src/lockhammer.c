@@ -278,6 +278,35 @@ void* hmr(void *ptr)
     }
     else {
         /* Calculate affinity mask for my core and set affinity */
+        /* The concept of "interleave" is used here to allow for specifying
+         * whether increasing cores counts first populate physical cores or
+         * hardware threads within the same physical core. This assumes the
+         * following relationship between logical core numbers (N), hardware
+         * threads per core (K), and physical cores (N/K):
+         *
+         *  physical core |___core_0__|___core_1__|_core_N/K-1|
+         *         thread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
+         *  --------------|-|-|---|---|-|-|---|---|-|-|---|---|
+         *   logical core | | |   |   | | |   |   | | |   |   |
+         *              0 |*| |   |   | | |   |   | | |   |   |
+         *              1 | | |   |   |*| |   |   | | |   |   |
+         *            ... |...................................|
+         *          N/K-1 | | |   |   | | |   |   |*| |   |   |
+         *            N/K | |*|   |   | | |   |   | | |   |   |
+         *          N/K+1 | | |   |   | |*|   |   | | |   |   |
+         *            ... |...................................|
+         *            N-K | | |   | * | | |   |   | | |   |   |
+         *          N-K+1 | | |   |   | | |   | * | | |   |   |
+         *            ... |...................................|
+         *            N-1 | | |   |   | | |   |   | | |   | * |
+         *
+         * Thus by setting the interleave value to 1 physical cores are filled
+         * first with subsequent cores past N/K adding subsequent threads
+         * on already populated physical cores.  On the other hand, setting
+         * interleave to K causes the algorithm to populate 0, N/K, 2N/K and
+         * so on filling all hardware threads in the first physical core prior
+         * to populating any threads on the second physical core.
+         */
         CPU_SET(((mycore * ncores / ileave) % ncores + (mycore / ileave)), &affin_mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
         fetchadd64_release(&ready_lock, 1);
