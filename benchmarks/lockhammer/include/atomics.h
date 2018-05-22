@@ -34,6 +34,9 @@
 #ifndef initialize_lock
 	#define initialize_lock(lock, thread)
 #endif
+#ifndef parse_test_args
+	#define parse_test_args(args, argc, argv)
+#endif
 
 static inline void spin_wait (unsigned long wait_iter) {
 #if defined(__aarch64__)

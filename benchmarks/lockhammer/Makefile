@@ -6,19 +6,25 @@ LDFLAGS=-lpthread
 lh_%: tests/%.h include/atomics.h src/lockhammer.c 
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
-all: \
-	lh_swap_mutex \
+TARGET_ARCH:=$(shell ${CC} -dumpmachine | cut -d '-' -f 1)
+
+TEST_TARGETS=lh_swap_mutex \
 	lh_event_mutex \
 	lh_cas_event_mutex \
 	lh_cas_lockref \
 	lh_cas_rw_lock \
 	lh_incdec_refcount \
 	lh_ticket_spinlock \
-	lh_hybrid_spinlock \
-	lh_hybrid_spinlock_fastdequeue \
 	lh_queued_spinlock \
 	lh_empty \
 	lh_jvm_objectmonitor
+
+ifeq ($(TARGET_ARCH),aarch64)
+	TEST_TARGETS+=lh_hybrid_spinlock \
+		lh_hybrid_spinlock_fastdequeue
+endif
+
+all: ${TEST_TARGETS}
 
 lh_event_mutex: ../../ext/mysql/event_mutex.h include/atomics.h ../../ext/mysql/include/ut_atomics.h src/lockhammer.c
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
