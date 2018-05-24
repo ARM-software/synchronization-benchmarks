@@ -7,6 +7,7 @@
 #define __LINUX_OSQ_LOCK_H
 
 #define initialize_lock(lock, threads) osq_lock_init(lock, threads)
+#define parse_test_args(args, argc, argv) osq_parse_args(args, argc, argv)
 
 #include <stdbool.h>
 #include "atomics.h"
@@ -24,7 +25,7 @@ struct optimistic_spin_node {
     struct optimistic_spin_node *next, *prev;
     int locked; /* 1 if lock acquired */
     int cpu; /* encoded CPU # + 1 value */
-};
+} __attribute__ ((aligned (128)));
 
 struct optimistic_spin_queue {
     /*
@@ -40,6 +41,34 @@ struct optimistic_spin_queue {
 /* Init macro and function. */
 #define OSQ_LOCK_UNLOCKED { ATOMIC_INIT(OSQ_UNLOCKED_VAL) }
 
+long long unqueue_retry;
+
+void osq_parse_args(test_args unused, int argc, char** argv) {
+    int i = 0;
+    char *endptr;
+    unqueue_retry = 5000000;
+
+    while ((i = getopt(argc, argv, "u:")) != -1)
+    {
+        switch (i) {
+          case 'u':
+            errno = 0;
+            unqueue_retry = strtoll(optarg, &endptr, 10);
+            if ((errno == ERANGE && (unqueue_retry == LONG_LONG_MAX))
+                    || (errno != 0 && unqueue_retry == 0) || endptr == optarg) {
+                fprintf(stderr, "osq_lock: value unsuitable for 'long long int'\n");
+                exit(1);
+            }
+            break;
+          default:
+            fprintf(stderr, "osq_lock additional options:\n");
+            fprintf(stderr, "\t[-h print this msg]\n");
+            fprintf(stderr, "\t[-u osq_lock unqueue retry (long long int)]\n");
+            exit(2);
+        }
+    }
+}
+
 /*
  * An MCS like lock especially tailored for optimistic spinning for sleeping
  * lock implementations (mutex, rwsem, etc).
@@ -50,17 +79,25 @@ struct optimistic_spin_queue {
  */
 
 struct optimistic_spin_node * osq_nodepool_ptr;
+int random_sleep;
 
 static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
 {
-    struct optimistic_spin_queue *osq_ptr = (struct optimistic_spin_queue *) lock;
-    atomic_set(&osq_ptr->tail, OSQ_UNLOCKED_VAL);
+    /* calloc will set memory to zero automatically */
+    struct optimistic_spin_queue *osq_queue_ptr = calloc(1, sizeof(struct optimistic_spin_queue));
     osq_nodepool_ptr = calloc(cores, sizeof(struct optimistic_spin_node));
-    if (osq_nodepool_ptr == NULL) exit(errno);
+    if (osq_queue_ptr == NULL || osq_nodepool_ptr == NULL) exit(errno);
+
+    srand(time(0));
+    random_sleep = rand() % 100;
+    atomic_set(&osq_queue_ptr->tail, OSQ_UNLOCKED_VAL);
+
+    /* store osq_queue_ptr raw value to lockhammer uint64_t *lock universal interface */
+    *lock = (uint64_t) osq_queue_ptr;
 }
 
-bool osq_lock(struct optimistic_spin_queue *lock);
-void osq_unlock(struct optimistic_spin_queue *lock);
+bool osq_lock(uint64_t *osq, unsigned long cpu_number);
+void osq_unlock(uint64_t *osq, unsigned long cpu_number);
 
 static inline bool osq_is_locked(struct optimistic_spin_queue *lock)
 {
@@ -95,12 +132,9 @@ static inline struct optimistic_spin_node * cpu_to_node(int encoded_cpu_val)
 static inline struct optimistic_spin_node *
 osq_wait_next(struct optimistic_spin_queue *lock,
           struct optimistic_spin_node *node,
-          struct optimistic_spin_node *prev)
+          struct optimistic_spin_node *prev,
+          unsigned long cpu_number)
 {
-    /* sched_getcpu() return current cpu number */
-    int cpu_number = sched_getcpu();
-    if (cpu_number == -1) exit(errno);
-
     struct optimistic_spin_node *next = NULL;
     int curr = encode_cpu(cpu_number);
     int old;
@@ -113,6 +147,10 @@ osq_wait_next(struct optimistic_spin_queue *lock,
     old = prev ? prev->cpu : OSQ_UNLOCKED_VAL;
 
     for (;;) {
+
+        /* TODO: prevent gcc from optimizing out lock variable */
+        //printf("%llx\n", lock);
+
         if (atomic_read(&lock->tail) == curr &&
             atomic_cmpxchg_acquire(&lock->tail, curr, old) == curr) {
             /*
@@ -145,18 +183,17 @@ osq_wait_next(struct optimistic_spin_queue *lock,
     return next;
 }
 
-bool osq_lock(struct optimistic_spin_queue *lock)
+/* GCC optimization level O1/O2/O3 would omit node/lock/prev/next variables */
+#pragma GCC optimize ("O0")
+bool osq_lock(uint64_t *osq, unsigned long cpu_number)
 {
-    /* sched_getcpu() return current cpu number */
-    int cpu_number = sched_getcpu();
-    if (cpu_number == -1) exit(errno);
-
     /* each core should have only one thread and one spin_node */
     struct optimistic_spin_node *node = osq_nodepool_ptr + cpu_number;
+    struct optimistic_spin_queue *lock = (struct optimistic_spin_queue *)(*osq);
     struct optimistic_spin_node *prev, *next;
     int curr = encode_cpu(cpu_number);
     int old;
-    int back_off = 0;
+    long long back_off = 0;
 
     node->locked = 0;
     node->next = NULL;
@@ -206,7 +243,7 @@ bool osq_lock(struct optimistic_spin_queue *lock)
          */
         /* TODO: How to emulate rescheduling? */
         //if (need_resched() || vcpu_is_preempted(node_to_cpu(node->prev)))
-        if (++back_off > 5000000)
+        if (++back_off > unqueue_retry)
             goto unqueue;
 
         cpu_relax();
@@ -251,7 +288,7 @@ unqueue:
      * back to @prev.
      */
 
-    next = osq_wait_next(lock, node, prev);
+    next = osq_wait_next(lock, node, prev, cpu_number);
     if (!next)
         return false;
 
@@ -269,12 +306,11 @@ unqueue:
     return false;
 }
 
-void osq_unlock(struct optimistic_spin_queue *lock)
+/* GCC optimization level O1/O2/O3 would omit node/lock/prev/next variables */
+#pragma GCC optimize ("O0")
+void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 {
-    /* sched_getcpu() return current cpu number */
-    int cpu_number = sched_getcpu();
-    if (cpu_number == -1) exit(errno);
-
+    struct optimistic_spin_queue *lock = (struct optimistic_spin_queue *)(*osq);
     struct optimistic_spin_node *node, *next;
     int curr = encode_cpu(cpu_number);
 
@@ -295,7 +331,7 @@ void osq_unlock(struct optimistic_spin_queue *lock)
         return;
     }
 
-    next = osq_wait_next(lock, node, NULL);
+    next = osq_wait_next(lock, node, NULL, cpu_number);
     if (next)
         WRITE_ONCE(next->locked, 1);
 }
@@ -306,9 +342,8 @@ unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned l
      * __mutex_lock_common() and mutex_optimistic_spin()
      * in linux/kernel/locking/mutex.c
      */
-    srand(time(0));
-    while (!osq_lock((struct optimistic_spin_queue *)lock)) {
-        usleep(rand() % 10);
+    while (!osq_lock(lock, threadnum)) {
+        usleep(random_sleep);
     }
     return 1;
 }
@@ -316,7 +351,7 @@ unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned l
 
 static inline void lock_release (uint64_t *lock, unsigned long threadnum)
 {
-    osq_unlock((struct optimistic_spin_queue *)lock);
+    osq_unlock(lock, threadnum);
 }
 
 #endif /* __LINUX_OSQ_LOCK_H */
