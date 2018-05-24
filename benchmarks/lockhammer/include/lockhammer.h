@@ -35,6 +35,7 @@
 struct thread_args {
     unsigned long ncores;
     unsigned long nthrds;
+    unsigned long ileave;
     unsigned long iter;
     unsigned long *lock;
     unsigned long *rst;
@@ -50,6 +51,7 @@ struct test_args {
     unsigned long nacqrs;
     unsigned long ncrit;
     unsigned long nparallel;
+    unsigned long ileave;
 };
 typedef struct test_args test_args;
 

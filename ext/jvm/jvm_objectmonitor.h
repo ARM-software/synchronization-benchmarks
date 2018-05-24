@@ -36,6 +36,8 @@
 /*
  * jvm_objectmonitor.h: A model of the OpenJDK ObjectMonitor class.
  *
+ * based on OpenJDK9
+ *
  * What Is It?
  *   In the JVM, the ObjectMonitor class is responsible for
  *   regulating which threads get access to methods and blocks

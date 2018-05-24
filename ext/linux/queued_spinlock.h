@@ -16,6 +16,8 @@
  * Authors: Waiman Long <waiman.long@hp.com>
  */
 
+/* Based on Cavuim Queued Spinlock patches applied to Linux 4.13 */
+
 #define initialize_lock(lock, threads) mcs_init_locks(lock, threads)
 
 #include "atomics.h"

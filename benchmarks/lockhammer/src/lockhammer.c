@@ -40,6 +40,7 @@
 #include <time.h>
 #include <string.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include "lockhammer.h"
 
@@ -75,11 +76,12 @@ int main(int argc, char** argv)
     test_args args = { .nthrds = num_cores,
                        .nacqrs = 50000,
                        .ncrit = 0,
-                       .nparallel = 0 };
+                       .nparallel = 0,
+                       .ileave = 1 };
 
     opterr = 0;
 
-    while ((i = getopt(argc, argv, "t:a:c:p:")) != -1)
+    while ((i = getopt(argc, argv, "t:a:c:p:i:")) != -1)
     {
         long optval = 0;
         switch (i) {
@@ -128,6 +130,16 @@ int main(int argc, char** argv)
                 args.nparallel = optval;
             }
             break;
+          case 'i':
+            optval = strtol(optarg, (char **) NULL, 10);
+            if (optval < 0) {
+                fprintf(stderr, "ERROR: Core interleave must be positive.\n");
+                return 1;
+            }
+            else {
+                args.ileave = optval;
+            }
+            break;
           case '?':
           default:
             print_usage(argv[0]);
@@ -135,7 +147,7 @@ int main(int argc, char** argv)
         }
     }
 
-    parse_test_args(args, argc - optind, &argv[optind]);
+    parse_test_args(args, argc, argv);
 
     pthread_t hmr_threads[args.nthrds];
     pthread_attr_t hmr_attr;
@@ -172,6 +184,7 @@ int main(int argc, char** argv)
         hmrs[i] = 0;
         t_args[i].ncores = num_cores;
         t_args[i].nthrds = args.nthrds;
+        t_args[i].ileave = args.ileave;
         t_args[i].iter = args.nacqrs;
         t_args[i].lock = &test_lock;
         t_args[i].rst = &hmrs[i];
@@ -220,16 +233,19 @@ int main(int argc, char** argv)
            ((double) sched_elapsed)/ ((double) result),
            ((double) real_elapsed) / ((double) result),
            avg_lock_depth);
+
+    return 0;
 }
 
 void* hmr(void *ptr)
 {
     unsigned long nlocks = 0;
     thread_args *x = (thread_args*)ptr;
-    int rval;
+
     unsigned long *lock = x->lock;
     unsigned long target_locks = x->iter;
     unsigned long ncores = x->ncores;
+    unsigned long ileave = x->ileave;
     unsigned long nthrds = x->nthrds;
     unsigned long hold_count = x->hold;
     unsigned long post_count = x->post;
@@ -265,7 +281,36 @@ void* hmr(void *ptr)
     }
     else {
         /* Calculate affinity mask for my core and set affinity */
-        CPU_SET(((mycore >> 1)) + ((ncores >> 1) * (mycore & 1)), &affin_mask);
+        /* The concept of "interleave" is used here to allow for specifying
+         * whether increasing cores counts first populate physical cores or
+         * hardware threads within the same physical core. This assumes the
+         * following relationship between logical core numbers (N), hardware
+         * threads per core (K), and physical cores (N/K):
+         *
+         *  physical core |___core_0__|___core_1__|_core_N/K-1|
+         *         thread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
+         *  --------------|-|-|---|---|-|-|---|---|-|-|---|---|
+         *   logical core | | |   |   | | |   |   | | |   |   |
+         *              0 |*| |   |   | | |   |   | | |   |   |
+         *              1 | | |   |   |*| |   |   | | |   |   |
+         *            ... |...................................|
+         *          N/K-1 | | |   |   | | |   |   |*| |   |   |
+         *            N/K | |*|   |   | | |   |   | | |   |   |
+         *          N/K+1 | | |   |   | |*|   |   | | |   |   |
+         *            ... |...................................|
+         *            N-K | | |   | * | | |   |   | | |   |   |
+         *          N-K+1 | | |   |   | | |   | * | | |   |   |
+         *            ... |...................................|
+         *            N-1 | | |   |   | | |   |   | | |   | * |
+         *
+         * Thus by setting the interleave value to 1 physical cores are filled
+         * first with subsequent cores past N/K adding subsequent threads
+         * on already populated physical cores.  On the other hand, setting
+         * interleave to K causes the algorithm to populate 0, N/K, 2N/K and
+         * so on filling all hardware threads in the first physical core prior
+         * to populating any threads on the second physical core.
+         */
+        CPU_SET(((mycore * ncores / ileave) % ncores + (mycore / ileave)), &affin_mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
         fetchadd64_release(&ready_lock, 1);
 
