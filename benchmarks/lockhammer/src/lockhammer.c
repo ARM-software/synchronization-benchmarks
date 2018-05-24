@@ -95,7 +95,7 @@ int main(int argc, char** argv)
                 args.nthrds = optval;
             }
             else {
-                fprintf(stderr, "WARNING: limiting thread count to online cores (%d).\n", num_cores);
+                fprintf(stderr, "WARNING: limiting thread count to online cores (%ld).\n", num_cores);
             }
             break;
           case 'a':
