@@ -40,6 +40,7 @@ struct thread_args {
     unsigned long *lock;
     unsigned long *rst;
     unsigned long *nsec;
+    unsigned long *real_nsec;
     unsigned long *depth;
     unsigned long *nstart;
     unsigned long hold, post;
