@@ -10,11 +10,11 @@
 #define __ASM_CMPXCHG_H
 
 #if defined(__x86_64__)
-#define LOCK_PREFIX_HERE \
-                ".pushsection .smp_locks,\"a\"\n"   \
-                ".balign 4\n"                       \
-                ".long 671f - .\n" /* offset */     \
-                ".popsection\n"                     \
+#define LOCK_PREFIX_HERE                                                \
+                ".pushsection .smp_locks,\"a\"\n"                       \
+                ".balign 4\n"                                           \
+                ".long 671f - .\n" /* offset */                         \
+                ".popsection\n"                                         \
                 "671:"
 
 #define LOCK_PREFIX LOCK_PREFIX_HERE "\n\tlock; "
@@ -158,27 +158,15 @@ static inline int atomic_xchg(atomic_t *v, int new)
 #define  atomic_xchg_acquire        atomic_xchg
 #define  atomic_xchg_release        atomic_xchg
 
+
 #elif defined(__aarch64__)
-#if defined(USE_LSE) /* ARMv8.1 with LSE */
-#define ARM64_LSE_ATOMIC_INSN(llsc, lse)        lse
-__asm__(".arch_extension        lse");
-#else /* ARMv8.0 without LSE */
-#define ARM64_LSE_ATOMIC_INSN(llsc, lse)        llsc
-#endif
 
-
-#define unreachable()                                   \
-    do {                                                \
-        asm volatile("");                               \
-        __builtin_unreachable();                        \
+#define unreachable()                                                   \
+    do {                                                                \
+        asm volatile("");                                               \
+        __builtin_unreachable();                                        \
         } while (0)
 
-/* Indirect stringification.  Doing two levels allows the parameter to be a
- * macro itself.  For example, compile with -DFOO=bar, __stringify(FOO)
- * converts to "bar".
- */
-#define __stringify_1(x...)    #x
-#define __stringify(x...)      __stringify_1(x)
 #define notrace __attribute__((no_instrument_function))
 
 #define __nops(n)   ".rept  " #n "\nnop\n.endr\n"
@@ -187,10 +175,6 @@ __asm__(".arch_extension        lse");
 /* Move the ll/sc atomics out-of-line */
 #define __LL_SC_INLINE          notrace
 #define __LL_SC_PREFIX(x)       __ll_sc_##x
-
-/* Macro for constructing calls to out-of-line ll/sc atomics */
-#define __LL_SC_CALL(op)        "bl\t" __stringify(__LL_SC_PREFIX(op)) "\n"
-#define __LL_SC_CLOBBERS        "x16", "x17", "x30"
 
 #define __CMPXCHG_CASE(w, sz, name, mb, acq, rel, cl)                   \
 __LL_SC_INLINE unsigned long                                            \
@@ -234,31 +218,27 @@ __CMPXCHG_CASE(w, h,  mb_2, dmb ish,  , l, "memory")
 __CMPXCHG_CASE(w,  ,  mb_4, dmb ish,  , l, "memory")
 __CMPXCHG_CASE( ,  ,  mb_8, dmb ish,  , l, "memory")
 
+#undef __CMPXCHG_CASE
 
-#define __LL_SC_CMPXCHG(op) __LL_SC_CALL(__cmpxchg_case_##op)
-
-#define __LSE_CMPXCHG_CASE(w, sz, name, mb, cl...)              \
+#define __LSE_CMPXCHG_CASE(w, sz, name, mb, cl...)                      \
 static inline unsigned long __cmpxchg_case_##name(volatile void *ptr,   \
-                          unsigned long old,    \
-                          unsigned long new)    \
-{                                   \
-    register unsigned long x0 asm ("x0") = (unsigned long)ptr;  \
-    register unsigned long x1 asm ("x1") = old;         \
-    register unsigned long x2 asm ("x2") = new;         \
-                                    \
-    asm volatile(ARM64_LSE_ATOMIC_INSN(             \
-    /* LL/SC */                         \
-    __LL_SC_CMPXCHG(name)                       \
-    __nops(2),                          \
-    /* LSE atomics */                       \
-    "   mov " #w "30, %" #w "[old]\n"           \
-    "   cas" #mb #sz "\t" #w "30, %" #w "[new], %[v]\n"     \
-    "   mov %" #w "[ret], " #w "30")            \
-    : [ret] "+r" (x0), [v] "+Q" (*(unsigned long *)ptr)     \
-    : [old] "r" (x1), [new] "r" (x2)                \
-    : __LL_SC_CLOBBERS, ##cl);                  \
-                                    \
-    return x0;                          \
+                          unsigned long old,                            \
+                          unsigned long new)                            \
+{                                                                       \
+    register unsigned long x0 asm ("x0") = (unsigned long)ptr;          \
+    register unsigned long x1 asm ("x1") = old;                         \
+    register unsigned long x2 asm ("x2") = new;                         \
+                                                                        \
+    asm volatile(                                                       \
+    /* LSE atomics */                                                   \
+    "   mov " #w "30, %" #w "[old]\n"                                   \
+    "   cas" #mb #sz "\t" #w "30, %" #w "[new], %[v]\n"                 \
+    "   mov %" #w "[ret], " #w "30"                                     \
+    : [ret] "+r" (x0), [v] "+Q" (*(unsigned long *)ptr)                 \
+    : [old] "r" (x1), [new] "r" (x2)                                    \
+    : cl);                                                              \
+                                                                        \
+    return x0;                                                          \
 }
 
 __LSE_CMPXCHG_CASE(w, b,     1,   )
@@ -278,30 +258,49 @@ __LSE_CMPXCHG_CASE(w, h,  mb_2, al, "memory")
 __LSE_CMPXCHG_CASE(w,  ,  mb_4, al, "memory")
 __LSE_CMPXCHG_CASE(x,  ,  mb_8, al, "memory")
 
-#undef __CMPXCHG_CASE
-#undef __LL_SC_CMPXCHG
 #undef __LSE_CMPXCHG_CASE
 
-
-#define __CMPXCHG_GEN(sfx)                      \
-static inline unsigned long __cmpxchg##sfx(volatile void *ptr,      \
-                       unsigned long old,       \
-                       unsigned long new,       \
-                       int size)            \
-{                                   \
-    switch (size) {                         \
-    case 1:                             \
-        return __cmpxchg_case##sfx##_1(ptr, (u8)old, new);  \
-    case 2:                             \
-        return __cmpxchg_case##sfx##_2(ptr, (u16)old, new); \
-    case 4:                             \
-        return __cmpxchg_case##sfx##_4(ptr, old, new);      \
-    case 8:                             \
-        return __cmpxchg_case##sfx##_8(ptr, old, new);      \
-    }                               \
-                                    \
-    unreachable();                  \
+#if defined(USE_LSE) /* ARMv8.1 with LSE */
+#define __CMPXCHG_GEN(sfx)                                              \
+static inline unsigned long __cmpxchg##sfx(volatile void *ptr,          \
+                       unsigned long old,                               \
+                       unsigned long new,                               \
+                       int size)                                        \
+{                                                                       \
+    switch (size) {                                                     \
+    case 1:                                                             \
+        return __cmpxchg_case##sfx##_1(ptr, (u8)old, new);              \
+    case 2:                                                             \
+        return __cmpxchg_case##sfx##_2(ptr, (u16)old, new);             \
+    case 4:                                                             \
+        return __cmpxchg_case##sfx##_4(ptr, old, new);                  \
+    case 8:                                                             \
+        return __cmpxchg_case##sfx##_8(ptr, old, new);                  \
+    }                                                                   \
+                                                                        \
+    unreachable();                                                      \
 }
+#else /* ARMv8.0 without LSE */
+#define __CMPXCHG_GEN(sfx)                                              \
+static inline unsigned long __cmpxchg##sfx(volatile void *ptr,          \
+                       unsigned long old,                               \
+                       unsigned long new,                               \
+                       int size)                                        \
+{                                                                       \
+    switch (size) {                                                     \
+    case 1:                                                             \
+        return __ll_sc___cmpxchg_case##sfx##_1(ptr, (u8)old, new);      \
+    case 2:                                                             \
+        return __ll_sc___cmpxchg_case##sfx##_2(ptr, (u16)old, new);     \
+    case 4:                                                             \
+        return __ll_sc___cmpxchg_case##sfx##_4(ptr, old, new);          \
+    case 8:                                                             \
+        return __ll_sc___cmpxchg_case##sfx##_8(ptr, old, new);          \
+    }                                                                   \
+                                                                        \
+    unreachable();                                                      \
+}
+#endif /* ARMv8 with or without LSE */
 
 __CMPXCHG_GEN()
 __CMPXCHG_GEN(_acq)
@@ -310,13 +309,13 @@ __CMPXCHG_GEN(_mb)
 
 #undef __CMPXCHG_GEN
 
-#define __cmpxchg_wrapper(sfx, ptr, o, n)               \
-({                                  \
-    __typeof__(*(ptr)) __ret;                   \
-    __ret = (__typeof__(*(ptr)))                    \
-        __cmpxchg##sfx((ptr), (unsigned long)(o),       \
-                (unsigned long)(n), sizeof(*(ptr)));    \
-    __ret;                              \
+#define __cmpxchg_wrapper(sfx, ptr, o, n)                               \
+({                                                                      \
+    __typeof__(*(ptr)) __ret;                                           \
+    __ret = (__typeof__(*(ptr)))                                        \
+        __cmpxchg##sfx((ptr), (unsigned long)(o),                       \
+                (unsigned long)(n), sizeof(*(ptr)));                    \
+    __ret;                                                              \
 })
 
 /* cmpxchg */
@@ -327,6 +326,12 @@ __CMPXCHG_GEN(_mb)
 #define cmpxchg_local       cmpxchg_relaxed
 
 
+#if defined(USE_LSE) /* ARMv8.1 with LSE */
+#define ARM64_LSE_ATOMIC_INSN(llsc, lse)        lse
+__asm__(".arch_extension        lse");
+#else /* ARMv8.0 without LSE */
+#define ARM64_LSE_ATOMIC_INSN(llsc, lse)        llsc
+#endif
 
 /*
  * We need separate acquire parameters for ll/sc and lse, since the full
@@ -334,27 +339,27 @@ __CMPXCHG_GEN(_mb)
  * acquire+release for the latter.
  */
 #define __XCHG_CASE(w, sz, name, mb, nop_lse, acq, acq_lse, rel, cl)    \
-static inline unsigned long __xchg_case_##name(unsigned long x,     \
-                           volatile void *ptr)  \
-{                                   \
-    unsigned long ret, tmp;                     \
-                                    \
-    asm volatile(ARM64_LSE_ATOMIC_INSN(             \
-    /* LL/SC */                         \
-    "   prfm    pstl1strm, %2\n"                \
-    "1: ld" #acq "xr" #sz "\t%" #w "0, %2\n"            \
-    "   st" #rel "xr" #sz "\t%w1, %" #w "3, %2\n"       \
-    "   cbnz    %w1, 1b\n"                  \
-    "   " #mb,                          \
-    /* LSE atomics */                       \
-    "   swp" #acq_lse #rel #sz "\t%" #w "3, %" #w "0, %2\n" \
-        __nops(3)                       \
-    "   " #nop_lse)                     \
-    : "=&r" (ret), "=&r" (tmp), "+Q" (*(unsigned long *)ptr)    \
-    : "r" (x)                           \
-    : cl);                              \
-                                    \
-    return ret;                         \
+static inline unsigned long __xchg_case_##name(unsigned long x,         \
+                           volatile void *ptr)                          \
+{                                                                       \
+    unsigned long ret, tmp;                                             \
+                                                                        \
+    asm volatile(ARM64_LSE_ATOMIC_INSN(                                 \
+    /* LL/SC */                                                         \
+    "   prfm    pstl1strm, %2\n"                                        \
+    "1: ld" #acq "xr" #sz "\t%" #w "0, %2\n"                            \
+    "   st" #rel "xr" #sz "\t%w1, %" #w "3, %2\n"                       \
+    "   cbnz    %w1, 1b\n"                                              \
+    "   " #mb,                                                          \
+    /* LSE atomics */                                                   \
+    "   swp" #acq_lse #rel #sz "\t%" #w "3, %" #w "0, %2\n"             \
+        __nops(3)                                                       \
+    "   " #nop_lse)                                                     \
+    : "=&r" (ret), "=&r" (tmp), "+Q" (*(unsigned long *)ptr)            \
+    : "r" (x)                                                           \
+    : cl);                                                              \
+                                                                        \
+    return ret;                                                         \
 }
 
 __XCHG_CASE(w, b,     1,        ,    ,  ,  ,  ,         )
@@ -376,23 +381,23 @@ __XCHG_CASE( ,  ,  mb_8, dmb ish, nop,  , a, l, "memory")
 
 #undef __XCHG_CASE
 
-#define __XCHG_GEN(sfx)                         \
-static inline unsigned long __xchg##sfx(unsigned long x,        \
-                    volatile void *ptr,     \
-                    int size)           \
-{                                   \
-    switch (size) {                         \
-    case 1:                             \
-        return __xchg_case##sfx##_1(x, ptr);            \
-    case 2:                             \
-        return __xchg_case##sfx##_2(x, ptr);            \
-    case 4:                             \
-        return __xchg_case##sfx##_4(x, ptr);            \
-    case 8:                             \
-        return __xchg_case##sfx##_8(x, ptr);            \
-    }                               \
-                                    \
-    unreachable();                          \
+#define __XCHG_GEN(sfx)                                                 \
+static inline unsigned long __xchg##sfx(unsigned long x,                \
+                    volatile void *ptr,                                 \
+                    int size)                                           \
+{                                                                       \
+    switch (size) {                                                     \
+    case 1:                                                             \
+        return __xchg_case##sfx##_1(x, ptr);                            \
+    case 2:                                                             \
+        return __xchg_case##sfx##_2(x, ptr);                            \
+    case 4:                                                             \
+        return __xchg_case##sfx##_4(x, ptr);                            \
+    case 8:                                                             \
+        return __xchg_case##sfx##_8(x, ptr);                            \
+    }                                                                   \
+                                                                        \
+    unreachable();                                                      \
 }
 
 __XCHG_GEN()
@@ -402,12 +407,12 @@ __XCHG_GEN(_mb)
 
 #undef __XCHG_GEN
 
-#define __xchg_wrapper(sfx, ptr, x)                 \
-({                                  \
-    __typeof__(*(ptr)) __ret;                   \
-    __ret = (__typeof__(*(ptr)))                    \
-        __xchg##sfx((unsigned long)(x), (ptr), sizeof(*(ptr))); \
-    __ret;                              \
+#define __xchg_wrapper(sfx, ptr, x)                                     \
+({                                                                      \
+    __typeof__(*(ptr)) __ret;                                           \
+    __ret = (__typeof__(*(ptr)))                                        \
+        __xchg##sfx((unsigned long)(x), (ptr), sizeof(*(ptr)));         \
+    __ret;                                                              \
 })
 
 /* xchg */
@@ -416,11 +421,11 @@ __XCHG_GEN(_mb)
 #define xchg_release(...)   __xchg_wrapper(_rel, __VA_ARGS__)
 #define xchg(...)       __xchg_wrapper( _mb, __VA_ARGS__)
 
-#define atomic_cmpxchg_relaxed(v, old, new)             \
+#define atomic_cmpxchg_relaxed(v, old, new)                             \
     cmpxchg_relaxed(&((v)->counter), (old), (new))
-#define atomic_cmpxchg_acquire(v, old, new)             \
+#define atomic_cmpxchg_acquire(v, old, new)                             \
     cmpxchg_acquire(&((v)->counter), (old), (new))
-#define atomic_cmpxchg_release(v, old, new)             \
+#define atomic_cmpxchg_release(v, old, new)                             \
     cmpxchg_release(&((v)->counter), (old), (new))
 #define atomic_cmpxchg(v, old, new) cmpxchg(&((v)->counter), (old), (new))
 

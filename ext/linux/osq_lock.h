@@ -25,6 +25,7 @@ struct optimistic_spin_node {
     struct optimistic_spin_node *next, *prev;
     int locked; /* 1 if lock acquired */
     int cpu; /* encoded CPU # + 1 value */
+    int random_sleep; /* random sleep in us */
 } __attribute__ ((aligned (128)));
 
 struct optimistic_spin_queue {
@@ -42,11 +43,13 @@ struct optimistic_spin_queue {
 #define OSQ_LOCK_UNLOCKED { ATOMIC_INIT(OSQ_UNLOCKED_VAL) }
 
 long long unqueue_retry;
+struct optimistic_spin_queue global_osq;
+struct optimistic_spin_node *global_osq_nodepool_ptr;
 
 void osq_parse_args(test_args unused, int argc, char** argv) {
     int i = 0;
     char *endptr;
-    unqueue_retry = 5000000;
+    unqueue_retry = 2000;
 
     while ((i = getopt(argc, argv, "u:")) != -1)
     {
@@ -78,22 +81,17 @@ void osq_parse_args(test_args unused, int argc, char** argv) {
  * spinning.
  */
 
-struct optimistic_spin_node * osq_nodepool_ptr;
-int random_sleep;
-
 static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
 {
     /* calloc will set memory to zero automatically */
-    struct optimistic_spin_queue *osq_queue_ptr = calloc(1, sizeof(struct optimistic_spin_queue));
-    osq_nodepool_ptr = calloc(cores, sizeof(struct optimistic_spin_node));
-    if (osq_queue_ptr == NULL || osq_nodepool_ptr == NULL) exit(errno);
+    global_osq_nodepool_ptr = calloc(cores + 1, sizeof(struct optimistic_spin_node));
+    if (global_osq_nodepool_ptr == NULL) exit(errno);
 
     srand(time(0));
-    random_sleep = rand() % 100;
-    atomic_set(&osq_queue_ptr->tail, OSQ_UNLOCKED_VAL);
+    for (int i = 0; i < cores; i++)
+        (global_osq_nodepool_ptr + i)->random_sleep = rand() % 5 + 1;  /* 1 ~ 5 */
 
-    /* store osq_queue_ptr raw value to lockhammer uint64_t *lock universal interface */
-    *lock = (uint64_t) osq_queue_ptr;
+    atomic_set(&global_osq.tail, OSQ_UNLOCKED_VAL);
 }
 
 bool osq_lock(uint64_t *osq, unsigned long cpu_number);
@@ -103,7 +101,6 @@ static inline bool osq_is_locked(struct optimistic_spin_queue *lock)
 {
     return atomic_read(&lock->tail) != OSQ_UNLOCKED_VAL;
 }
-
 
 /*
  * We use the value 0 to represent "no CPU", thus the encoded value
@@ -122,7 +119,7 @@ static inline int node_to_cpu(struct optimistic_spin_node *node)
 static inline struct optimistic_spin_node * cpu_to_node(int encoded_cpu_val)
 {
     int cpu_nr = encoded_cpu_val - 1;
-    return osq_nodepool_ptr + cpu_nr;
+    return global_osq_nodepool_ptr + cpu_nr;
 }
 
 /*
@@ -147,9 +144,6 @@ osq_wait_next(struct optimistic_spin_queue *lock,
     old = prev ? prev->cpu : OSQ_UNLOCKED_VAL;
 
     for (;;) {
-
-        /* TODO: prevent gcc from optimizing out lock variable */
-        //printf("%llx\n", lock);
 
         if (atomic_read(&lock->tail) == curr &&
             atomic_cmpxchg_acquire(&lock->tail, curr, old) == curr) {
@@ -183,13 +177,11 @@ osq_wait_next(struct optimistic_spin_queue *lock,
     return next;
 }
 
-/* GCC optimization level O1/O2/O3 would omit node/lock/prev/next variables */
-#pragma GCC optimize ("O0")
 bool osq_lock(uint64_t *osq, unsigned long cpu_number)
 {
     /* each core should have only one thread and one spin_node */
-    struct optimistic_spin_node *node = osq_nodepool_ptr + cpu_number;
-    struct optimistic_spin_queue *lock = (struct optimistic_spin_queue *)(*osq);
+    struct optimistic_spin_node *node = global_osq_nodepool_ptr + cpu_number;
+    struct optimistic_spin_queue *lock = &global_osq;
     struct optimistic_spin_node *prev, *next;
     int curr = encode_cpu(cpu_number);
     int old;
@@ -306,11 +298,9 @@ unqueue:
     return false;
 }
 
-/* GCC optimization level O1/O2/O3 would omit node/lock/prev/next variables */
-#pragma GCC optimize ("O0")
 void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 {
-    struct optimistic_spin_queue *lock = (struct optimistic_spin_queue *)(*osq);
+    struct optimistic_spin_queue *lock = &global_osq;
     struct optimistic_spin_node *node, *next;
     int curr = encode_cpu(cpu_number);
 
@@ -324,7 +314,7 @@ void osq_unlock(uint64_t *osq, unsigned long cpu_number)
     /*
      * Second most likely case.
      */
-    node = osq_nodepool_ptr + cpu_number;
+    node = global_osq_nodepool_ptr + cpu_number;
     next = xchg(&node->next, NULL);
     if (next) {
         WRITE_ONCE(next->locked, 1);
@@ -338,12 +328,13 @@ void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 
 unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum)
 {
-    /* TODO/BUG: need to implement mutex slow path like
+    /* TODO: need to implement mutex slow path like
      * __mutex_lock_common() and mutex_optimistic_spin()
      * in linux/kernel/locking/mutex.c
      */
     while (!osq_lock(lock, threadnum)) {
-        usleep(random_sleep);
+        /* maximum usleep time: 5us */
+        usleep((global_osq_nodepool_ptr + threadnum)->random_sleep);
     }
     return 1;
 }
