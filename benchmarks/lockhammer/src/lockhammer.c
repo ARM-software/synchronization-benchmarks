@@ -56,6 +56,7 @@ void print_usage (char *invoc) {
     fprintf(stderr,
             "Usage: %s\n\t[-t threads]\n\t[-a acquires per thread]\n\t"
             "[-c critical iterations]\n\t[-p parallelizable iterations]\n\t"
+            "[-s]\n\t"
             "[-- <test specific arguments>]\n", invoc);
 }
 
@@ -77,11 +78,12 @@ int main(int argc, char** argv)
                        .nacqrs = 50000,
                        .ncrit = 0,
                        .nparallel = 0,
-                       .ileave = 1 };
+                       .ileave = 1,
+                       .safemode = 0 };
 
     opterr = 0;
 
-    while ((i = getopt(argc, argv, "t:a:c:p:i:")) != -1)
+    while ((i = getopt(argc, argv, "t:a:c:p:i:s")) != -1)
     {
         long optval = 0;
         switch (i) {
@@ -139,6 +141,8 @@ int main(int argc, char** argv)
             else {
                 args.ileave = optval;
             }
+          case 's':
+            args.safemode = 1;
             break;
           case '?':
           default:
@@ -173,10 +177,12 @@ int main(int argc, char** argv)
        on an already-deplayed system. */
 
     pthread_attr_init(&hmr_attr);
-    pthread_attr_setinheritsched(&hmr_attr, PTHREAD_EXPLICIT_SCHED);
-    pthread_attr_setschedpolicy(&hmr_attr, SCHED_FIFO);
-    sparam.sched_priority = 1;
-    pthread_attr_setschedparam(&hmr_attr, &sparam);
+    if (!args.safemode) {
+        pthread_attr_setinheritsched(&hmr_attr, PTHREAD_EXPLICIT_SCHED);
+        pthread_attr_setschedpolicy(&hmr_attr, SCHED_FIFO);
+        sparam.sched_priority = 1;
+        pthread_attr_setschedparam(&hmr_attr, &sparam);
+    }
 
     initialize_lock(&test_lock, num_cores);
 
@@ -317,6 +323,7 @@ void* hmr(void *ptr)
          */
         CPU_SET(((mycore * ncores / ileave) % ncores + (mycore / ileave)), &affin_mask);
         sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+
         fetchadd64_release(&ready_lock, 1);
 
         /* Spin until the "marshal" sets the appropriate bit */

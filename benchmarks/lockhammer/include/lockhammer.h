@@ -53,6 +53,7 @@ struct test_args {
     unsigned long ncrit;
     unsigned long nparallel;
     unsigned long ileave;
+    unsigned char safemode;
 };
 typedef struct test_args test_args;
 
