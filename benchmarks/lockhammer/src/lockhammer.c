@@ -43,11 +43,13 @@
 #include <limits.h>
 
 #include "lockhammer.h"
+#include "perf_timer.h"
 
 #include ATOMIC_TEST
 
 uint64_t test_lock = 0;
 uint64_t sync_lock = 0;
+uint64_t calibrate_lock = 0;
 uint64_t ready_lock = 0;
 
 void* hmr(void *);
@@ -55,8 +57,11 @@ void* hmr(void *);
 void print_usage (char *invoc) {
     fprintf(stderr,
             "Usage: %s\n\t[-t threads]\n\t[-a acquires per thread]\n\t"
-            "[-c critical iterations]\n\t[-p parallelizable iterations]\n\t"
-            "[-s]\n\t"
+            "[-c <#>[ns | in] critical iterations measured in ns or (in)structions, "
+            "if no suffix, assumes instructions]\n\t"
+            "[-p <#>[ns | in] parallelizable iterations measured in ns or (in)structions, "
+            "if no suffix, assumes (in)structions]\n\t"
+            "[-s safe-mode operation for running as non-root\n\t"
             "[-- <test specific arguments>]\n", invoc);
 }
 
@@ -86,6 +91,8 @@ int main(int argc, char** argv)
     while ((i = getopt(argc, argv, "t:a:c:p:i:s")) != -1)
     {
         long optval = 0;
+        int len = 0;
+        char buf[128];
         switch (i) {
           case 't':
             optval = strtol(optarg, (char **) NULL, 10);
@@ -113,6 +120,14 @@ int main(int argc, char** argv)
             }
             break;
           case 'c':
+            // Set the units for loops
+            len = strlen(optarg);
+            if (optarg[len - 1] == 's') {
+                args.ncrit_units = NS;
+            } else {
+                args.ncrit_units = INSTS;
+            } 
+            
             optval = strtol(optarg, (char **) NULL, 10);
             if (optval < 0) {
                 fprintf(stderr, "ERROR: critical iteration count must be positive.\n");
@@ -123,6 +138,14 @@ int main(int argc, char** argv)
             }
             break;
           case 'p':
+            // Set the units for loops
+            len = strlen(optarg);
+            if (optarg[len - 1] == 's') {
+                args.nparallel_units = NS;
+            } else {
+                args.nparallel_units = INSTS;
+            }
+
             optval = strtol(optarg, (char **) NULL, 10);
             if (optval < 0) {
                 fprintf(stderr, "ERROR: parallel iteration count must be positive.\n");
@@ -153,6 +176,7 @@ int main(int argc, char** argv)
 
     parse_test_args(args, argc, argv);
 
+    double tickspns;
     pthread_t hmr_threads[args.nthrds];
     pthread_attr_t hmr_attr;
     unsigned long hmrs[args.nthrds];
@@ -185,6 +209,8 @@ int main(int argc, char** argv)
     }
 
     initialize_lock(&test_lock, num_cores);
+    // Get frequency of clock, and divide by 1B to get # of ticks per ns
+    tickspns = (double)timer_get_cnt_freq() / 1000000000.0; 
 
     thread_args t_args[args.nthrds];
     for (i = 0; i < args.nthrds; ++i) {
@@ -200,7 +226,10 @@ int main(int argc, char** argv)
         t_args[i].depth = &hmrdepth[i];
         t_args[i].nstart = &start_ns;
         t_args[i].hold = args.ncrit;
+        t_args[i].hold_unit = args.ncrit_units;
         t_args[i].post = args.nparallel;
+        t_args[i].post_unit = args.nparallel_units;
+        t_args[i].tickspns = tickspns;
 
         pthread_create(&hmr_threads[i], &hmr_attr, hmr, (void*)(&t_args[i]));
     }
@@ -248,6 +277,36 @@ int main(int argc, char** argv)
     return 0;
 }
 
+/* Calculate timer spin-times where we do not access the clock.  
+ * First calibrate the wait loop by doing a binary search around 
+ * an estimated number of ticks. All threads participate to take
+ * into account pipeline effects of threading.
+ */
+static void calibrate_timer(thread_args *x, unsigned long mycore)
+{
+    if (x->hold_unit == NS) {
+        /* Determine how many timer ticks would happen for this wait time */
+        unsigned long hold = (unsigned long)((double)x->hold * x->tickspns);
+        /* Calibrate the number of loops we have to do */
+        x->hold = calibrate_blackhole(hold, 0, TOKENS_MAX_HIGH, mycore);
+    } else {
+        x->hold = x->hold / 2;
+    }
+
+    // Make sure to re-sync any stragglers
+    synchronize_threads(&calibrate_lock, x->nthrds);
+
+    if (x->post_unit == NS) {
+        unsigned long post = (unsigned long)((double)x->post * x->tickspns);
+        x->post = calibrate_blackhole(post, 0, TOKENS_MAX_HIGH, mycore);
+    } else {
+        x->post = x->post / 2;
+    }
+#ifdef DEBUG
+    printf("Calibrated (%lu) with hold=%ld post=%ld\n", mycore, x->hold, x->post);
+#endif
+}
+
 void* hmr(void *ptr)
 {
     unsigned long nlocks = 0;
@@ -260,6 +319,7 @@ void* hmr(void *ptr)
     unsigned long nthrds = x->nthrds;
     unsigned long hold_count = x->hold;
     unsigned long post_count = x->post;
+    double tickspns = x->tickspns;
 
     unsigned long mycore = 0;
 
@@ -287,8 +347,15 @@ void* hmr(void *ptr)
 
         /* Spin until the appropriate numer of threads have become ready */
         wait64(&ready_lock, nthrds - 1);
-        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
         fetchadd64_release(&sync_lock, 1);
+
+        calibrate_timer(x, mycore);
+        hold_count = x->hold;
+        post_count = x->post;
+
+        /* Wait for all threads to arrive from calibrating. */ 
+        synchronize_threads(&calibrate_lock, nthrds);
+        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
     }
     else {
         /* Calculate affinity mask for my core and set affinity */
@@ -328,18 +395,30 @@ void* hmr(void *ptr)
 
         /* Spin until the "marshal" sets the appropriate bit */
         wait64(&sync_lock, (nthrds * 2) | 1);
-        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
+
+        /* All threads participate in calibration */
+        calibrate_timer(x, mycore);
+        hold_count = x->hold;
+        post_count = x->post;
+
+        /* Wait for all threads to arrive from calibrating */
+        synchronize_threads(&calibrate_lock, nthrds);
     }
 
+#ifdef DDEBUG
+    printf("%ld %ld\n", hold_count, post_count);
+#endif
+
+    clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
 
     while (!target_locks || nlocks < target_locks) {
         /* Do a lock thing */
         prefetch64(lock);
         total_depth += lock_acquire(lock, mycore);
-        spin_wait(hold_count);
+        blackhole(hold_count);
         lock_release(lock, mycore);
-        spin_wait(post_count);
+        blackhole(post_count);
 
         nlocks++;
     }

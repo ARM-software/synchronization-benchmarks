@@ -1,7 +1,20 @@
 CFLAGS=-g -O2 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include
-LDFLAGS=-lpthread
+
+ifneq ($(DEBUG_LEVEL),)
+ifeq ($(shell test $(DEBUG_LEVEL) -gt 0; echo $$?),0)
+CFLAGS+=-DDEBUG
+endif
+ifeq ($(shell test $(DEBUG_LEVEL) -gt 1; echo $$?),0)
+CFLAGS+=-DDDEBUG
+endif
+endif
 # LSE support is experimental, please enable the below CFLAGS with caution
-# CFLAGS=-O2 -march=armv8-a+lse -DUSE_LSE -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include
+ifneq ($(LSE_ENABLE),)
+CFLAGS+=-march=armv8-a+lse -DUSE_LSE
+endif
+
+
+LDFLAGS=-lpthread -lm
 
 lh_%: tests/%.h include/atomics.h src/lockhammer.c 
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}

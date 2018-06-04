@@ -29,6 +29,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
 #define initialize_lock(lock, threads) cas_rw_lock_init(lock, threads)
 #define CAS_RW_INIT_VAL 0x20000000
 #define CAS_RW_THRESHOLD 0

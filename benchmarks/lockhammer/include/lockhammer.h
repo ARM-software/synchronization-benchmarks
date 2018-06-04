@@ -32,6 +32,10 @@
 #ifndef __LOCKHAMMER_H__
 #define __LOCKHAMMER_H__
 
+enum units { NS,
+             INSTS };
+typedef enum units Units;
+
 struct thread_args {
     unsigned long ncores;
     unsigned long nthrds;
@@ -44,6 +48,8 @@ struct thread_args {
     unsigned long *depth;
     unsigned long *nstart;
     unsigned long hold, post;
+    Units hold_unit, post_unit;
+    double tickspns;
 };
 typedef struct thread_args thread_args;
 
@@ -51,7 +57,9 @@ struct test_args {
     unsigned long nthrds;
     unsigned long nacqrs;
     unsigned long ncrit;
+    Units ncrit_units;
     unsigned long nparallel;
+    Units nparallel_units;
     unsigned long ileave;
     unsigned char safemode;
 };
