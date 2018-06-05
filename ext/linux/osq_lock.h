@@ -20,6 +20,9 @@
 /*
  * An MCS like lock especially tailored for optimistic spinning for sleeping
  * lock implementations (mutex, rwsem, etc).
+ *
+ * Use 128 bytes alignment to eliminate false sharing for various Armv8 core
+ * cache line size
  */
 struct optimistic_spin_node {
     struct optimistic_spin_node *next, *prev;
@@ -39,19 +42,36 @@ struct optimistic_spin_queue {
 /* 0 means thread unlocked, 1~N represents each individual thread on core 1~N */
 #define OSQ_UNLOCKED_VAL (0)
 
+/*
+ * maximum backoff sleep time in microseconds (default 10us)
+ * linux kernel scheduling intrinsic delay is less than 10us
+ * therefore osq may be rescheduled after this backoff time at best
+ * http://www.brendangregg.com/blog/2017-03-16/perf-sched.html
+ */
+#define MAX_SLEEP_US 10
+
+/*
+ * Maximum default unqueue_retry, most system spins at least 500~1000 times
+ * to unqueue.
+ */
+#define MAX_UNQUEUE_RETRY 1000000
+
 /* Init macro and function. */
 #define OSQ_LOCK_UNLOCKED { ATOMIC_INIT(OSQ_UNLOCKED_VAL) }
 
 long long unqueue_retry;
+long long max_sleep_us;
 struct optimistic_spin_queue global_osq;
 struct optimistic_spin_node *global_osq_nodepool_ptr;
 
 void osq_parse_args(test_args unused, int argc, char** argv) {
     int i = 0;
     char *endptr;
-    unqueue_retry = 2000;
+    unqueue_retry = MAX_UNQUEUE_RETRY;
+    max_sleep_us = MAX_SLEEP_US;
 
-    while ((i = getopt(argc, argv, "u:")) != -1)
+    /* extended options retrieved after '--' operator */
+    while ((i = getopt(argc, argv, "u:s:")) != -1)
     {
         switch (i) {
           case 'u':
@@ -59,14 +79,30 @@ void osq_parse_args(test_args unused, int argc, char** argv) {
             unqueue_retry = strtoll(optarg, &endptr, 10);
             if ((errno == ERANGE && (unqueue_retry == LONG_LONG_MAX))
                     || (errno != 0 && unqueue_retry == 0) || endptr == optarg) {
-                fprintf(stderr, "osq_lock: value unsuitable for 'long long int'\n");
+                fprintf(stderr, "unqueue_retry: value unsuitable for 'long long int'\n");
                 exit(1);
             }
             break;
+
+          case 's':
+            errno = 0;
+            max_sleep_us = strtoll(optarg, &endptr, 10);
+            if ((errno == ERANGE && (max_sleep_us == LONG_LONG_MAX))
+                    || (errno != 0 && max_sleep_us == 0) || endptr == optarg) {
+                fprintf(stderr, "max_sleep_us: value unsuitable for 'long long int'\n");
+                exit(1);
+            } else if (max_sleep_us < 0) {
+                fprintf(stderr, "max_sleep_us must be a positive integer.\n");
+                exit(1);
+            }
+            break;
+
           default:
-            fprintf(stderr, "osq_lock additional options:\n");
-            fprintf(stderr, "\t[-h print this msg]\n");
-            fprintf(stderr, "\t[-u osq_lock unqueue retry (long long int)]\n");
+            fprintf(stderr,
+                    "osq_lock additional options:\n"
+                    "\t[-h print this msg]\n"
+                    "\t[-u max spin retries before unqueue, default 1000000]\n"
+                    "\t[-s max unqueue sleep in microseconds, default 10]\n");
             exit(2);
         }
     }
@@ -80,17 +116,37 @@ void osq_parse_args(test_args unused, int argc, char** argv) {
  * called from interrupt context and we have preemption disabled while
  * spinning.
  */
-
 static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
 {
-    /* calloc will set memory to zero automatically */
+    /*
+     * Allocate optimistic_spin_node from heap during main thread initialization.
+     * Each cpu core will have its own spinning node, aligned to 128 bytes maximum
+     * cache line, calloc will set memory to zero automatically, therefore no need
+     * to bzero the nodepool.
+     */
     global_osq_nodepool_ptr = calloc(cores + 1, sizeof(struct optimistic_spin_node));
     if (global_osq_nodepool_ptr == NULL) exit(errno);
 
+    /*
+     * If osq spins more than unqueue_retry times, the spinning cpu may backoff
+     * and sleep for 1 ~ 10 microseconds (on average 5 microseconds). Each spinning
+     * thread uses a different backoff sleep time, and we can adjust the maximum
+     * sleep time by redefine the default MAX_SLEEP_US or tuning via parameter '-s'
+     *
+     * The minimum backoff sleep time is 1 microsecond, we should not sleep less
+     * than this minimum because normally the lockhammer critical section is less
+     * than 1us, and there is a chance to recapture the lock after that period.
+     *
+     * Note: Avoid assigning random_sleep a negative value, otherwise usleep would
+     * have a very large sleep time after implicit casting negative to uint32_t.
+     */
     srand(time(0));
-    for (int i = 0; i < cores; i++)
-        (global_osq_nodepool_ptr + i)->random_sleep = rand() % 5 + 1;  /* 1 ~ 5 */
+    for (int i = 0; i < cores; i++) {
+        if (max_sleep_us > 0)
+            (global_osq_nodepool_ptr + i)->random_sleep = rand() % max_sleep_us + 1;
+    }
 
+    /* Initialize global osq tail indicater to OSQ_UNLOCKED_VAL (0: unlocked) */
     atomic_set(&global_osq.tail, OSQ_UNLOCKED_VAL);
 }
 
@@ -103,8 +159,8 @@ static inline bool osq_is_locked(struct optimistic_spin_queue *lock)
 }
 
 /*
- * We use the value 0 to represent "no CPU", thus the encoded value
- * will be the CPU number incremented by 1.
+ * Value 0 represents "no CPU" or "unlocked", thus the encoded value will be
+ * the CPU number incremented by 1.
  */
 static inline int encode_cpu(int cpu_nr)
 {
@@ -116,6 +172,10 @@ static inline int node_to_cpu(struct optimistic_spin_node *node)
     return node->cpu - 1;
 }
 
+/*
+ * optimistic_spin_node for each cpu is stored linearly in main heap starting
+ * from global_osq_nodepool_ptr
+ */
 static inline struct optimistic_spin_node * cpu_to_node(int encoded_cpu_val)
 {
     int cpu_nr = encoded_cpu_val - 1;
@@ -177,10 +237,12 @@ osq_wait_next(struct optimistic_spin_queue *lock,
     return next;
 }
 
+/* uint64_t *osq is ignored because we use &global_osq instead */
 bool osq_lock(uint64_t *osq, unsigned long cpu_number)
 {
-    /* each core should have only one thread and one spin_node */
+    /* each cpu core has only one thread spinning on one optimistic_spin_node */
     struct optimistic_spin_node *node = global_osq_nodepool_ptr + cpu_number;
+    /* optimistic_spin_queue stores the current osq tail globally */
     struct optimistic_spin_queue *lock = &global_osq;
     struct optimistic_spin_node *prev, *next;
     int curr = encode_cpu(cpu_number);
@@ -228,14 +290,14 @@ bool osq_lock(uint64_t *osq, unsigned long cpu_number)
      */
 
     while (!READ_ONCE(node->locked)) {
+        /* TODO: Need to emulate kernel rescheduling */
         /*
          * If we need to reschedule bail... so we can block.
          * Use vcpu_is_preempted() to avoid waiting for a preempted
-         * lock holder:
+         * lock holder.
          */
-        /* TODO: How to emulate rescheduling? */
         //if (need_resched() || vcpu_is_preempted(node_to_cpu(node->prev)))
-        if (++back_off > unqueue_retry)
+        if (++back_off > unqueue_retry) /* default MAX_UNQUEUE_RETRY */
             goto unqueue;
 
         cpu_relax();
@@ -298,8 +360,10 @@ unqueue:
     return false;
 }
 
+/* uint64_t *osq is ignored because we use &global_osq instead */
 void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 {
+    /* optimistic_spin_queue stores the current osq tail globally */
     struct optimistic_spin_queue *lock = &global_osq;
     struct optimistic_spin_node *node, *next;
     int curr = encode_cpu(cpu_number);
@@ -313,6 +377,7 @@ void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 
     /*
      * Second most likely case.
+     * If there is a next node, notify it.
      */
     node = global_osq_nodepool_ptr + cpu_number;
     next = xchg(&node->next, NULL);
@@ -321,19 +386,31 @@ void osq_unlock(uint64_t *osq, unsigned long cpu_number)
         return;
     }
 
+    /*
+     * Wait for another stable next, or get NULL if the queue is empty.
+     */
     next = osq_wait_next(lock, node, NULL, cpu_number);
     if (next)
         WRITE_ONCE(next->locked, 1);
 }
 
+
+/* standard lockhammer lock_acquire and lock_release interfaces */
 unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum)
 {
-    /* TODO: need to implement mutex slow path like
-     * __mutex_lock_common() and mutex_optimistic_spin()
-     * in linux/kernel/locking/mutex.c
+    /*
+     * TODO: need to implement mutex slow path like __mutex_lock_common()
+     * with mutex_optimistic_spin() in linux/kernel/locking/mutex.c
      */
     while (!osq_lock(lock, threadnum)) {
-        /* maximum usleep time: 5us */
+        /*
+         * If still cannot acquire the lock after spinning for unqueue_retry
+         * times, try to backoff and sleep for random microseconds specified
+         * by parameter '-s', by default the maximum sleep time is 10us. Then
+         * reacquire the lock again infinitely until success.
+         *
+         * This behaves similar to kernel mutex with fine tuning sleep time.
+         */
         usleep((global_osq_nodepool_ptr + threadnum)->random_sleep);
     }
     return 1;
