@@ -185,6 +185,7 @@ __LL_SC_PREFIX(__cmpxchg_case_##name(volatile void *ptr,                \
         unsigned long tmp, oldval;                                      \
                                                                         \
         asm volatile(                                                   \
+        /* LL/SC */                                                     \
         "       prfm    pstl1strm, %[v]\n"                              \
         "1:     ld" #acq "xr" #sz "\t%" #w "[oldval], %[v]\n"           \
         "       eor     %" #w "[tmp], %" #w "[oldval], %" #w "[old]\n"  \

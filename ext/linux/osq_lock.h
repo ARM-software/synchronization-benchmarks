@@ -43,12 +43,12 @@ struct optimistic_spin_queue {
 #define OSQ_UNLOCKED_VAL (0)
 
 /*
- * maximum backoff sleep time in microseconds (default 10us)
- * linux kernel scheduling intrinsic delay is less than 10us
- * therefore osq may be rescheduled after this backoff time at best
+ * maximum backoff sleep time in microseconds (default 0us, no sleep)
+ * linux kernel scheduling intrinsic delay is less than 7us, however
+ * we need to tune this parameter for different machines.
  * http://www.brendangregg.com/blog/2017-03-16/perf-sched.html
  */
-#define MAX_SLEEP_US 10
+#define MAX_SLEEP_US 0
 
 /*
  * Maximum default unqueue_retry, most system spins at least 500~1000 times
@@ -99,7 +99,7 @@ void osq_parse_args(test_args unused, int argc, char** argv) {
 
           default:
             fprintf(stderr,
-                    "osq_lock additional options:\n"
+                    "osq_lock additional options after --:\n"
                     "\t[-h print this msg]\n"
                     "\t[-u max spin retries before unqueue, default 1000000]\n"
                     "\t[-s max unqueue sleep in microseconds, default 10]\n");
@@ -132,10 +132,7 @@ static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
      * and sleep for 1 ~ 10 microseconds (on average 5 microseconds). Each spinning
      * thread uses a different backoff sleep time, and we can adjust the maximum
      * sleep time by redefine the default MAX_SLEEP_US or tuning via parameter '-s'
-     *
-     * The minimum backoff sleep time is 1 microsecond, we should not sleep less
-     * than this minimum because normally the lockhammer critical section is less
-     * than 1us, and there is a chance to recapture the lock after that period.
+     * By default, we disable this sleep (MAX_SLEEP_US = 0)
      *
      * Note: Avoid assigning random_sleep a negative value, otherwise usleep would
      * have a very large sleep time after implicit casting negative to uint32_t.
@@ -406,7 +403,7 @@ unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned l
         /*
          * If still cannot acquire the lock after spinning for unqueue_retry
          * times, try to backoff and sleep for random microseconds specified
-         * by parameter '-s', by default the maximum sleep time is 10us. Then
+         * by parameter '-s', by default the maximum sleep time is 0us. Then
          * reacquire the lock again infinitely until success.
          *
          * This behaves similar to kernel mutex with fine tuning sleep time.
