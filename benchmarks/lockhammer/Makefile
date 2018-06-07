@@ -31,7 +31,8 @@ TEST_TARGETS=lh_swap_mutex \
 	lh_queued_spinlock \
 	lh_empty \
 	lh_jvm_objectmonitor \
-	lh_tbb_spin_rw_mutex
+	lh_tbb_spin_rw_mutex \
+	lh_osq_lock
 
 ifeq ($(TARGET_ARCH),aarch64)
 	TEST_TARGETS+=lh_hybrid_spinlock \
@@ -53,6 +54,9 @@ lh_hybrid_spinlock: ../../ext/linux/hybrid_spinlock.h include/atomics.h ../../ex
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
 lh_hybrid_spinlock_fastdequeue: ../../ext/linux/hybrid_spinlock_fastdequeue.h include/atomics.h ../../ext/linux/include/lk_atomics.h src/lockhammer.c
+	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
+
+lh_osq_lock: ../../ext/linux/osq_lock.h ../../ext/linux/include/lk_atomics.h ../../ext/linux/include/lk_barrier.h ../../ext/linux/include/lk_cmpxchg.h include/atomics.h src/lockhammer.c
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
 lh_queued_spinlock: ../../ext/linux/queued_spinlock.h include/atomics.h ../../ext/linux/include/lk_atomics.h src/lockhammer.c
