@@ -51,10 +51,11 @@ struct optimistic_spin_queue {
 #define MAX_SLEEP_US 0
 
 /*
- * Maximum default unqueue_retry, most system spins at least 500~1000 times
- * to unqueue.
+ * Default unqueue_retry times, most system spins at least 500~1000 times
+ * before unqueue from optimistic_spin_queue. Default large value simply
+ * disables unqueue path and make osq_lock more like mcs_queue_spinlock.
  */
-#define MAX_UNQUEUE_RETRY 1000000
+#define UNQUEUE_RETRY 1000000000
 
 /* Init macro and function. */
 #define OSQ_LOCK_UNLOCKED { ATOMIC_INIT(OSQ_UNLOCKED_VAL) }
@@ -67,7 +68,7 @@ struct optimistic_spin_node *global_osq_nodepool_ptr;
 void osq_parse_args(test_args unused, int argc, char** argv) {
     int i = 0;
     char *endptr;
-    unqueue_retry = MAX_UNQUEUE_RETRY;
+    unqueue_retry = UNQUEUE_RETRY;
     max_sleep_us = MAX_SLEEP_US;
 
     /* extended options retrieved after '--' operator */
@@ -287,14 +288,20 @@ bool osq_lock(uint64_t *osq, unsigned long cpu_number)
      */
 
     while (!READ_ONCE(node->locked)) {
-        /* TODO: Need to emulate kernel rescheduling */
+        /*
+         * TODO: Need to better emulate kernel rescheduling in user space.
+         * Because we cannot use need_resched() in user space, we simply
+         * add a upper limit named unqueue_retry to mimic need_resched().
+         * If this limit has been exceeded by back_off times, we will jump
+         * to unqueue path and remove the spinning node from global osq.
+         */
         /*
          * If we need to reschedule bail... so we can block.
          * Use vcpu_is_preempted() to avoid waiting for a preempted
          * lock holder.
          */
         //if (need_resched() || vcpu_is_preempted(node_to_cpu(node->prev)))
-        if (++back_off > unqueue_retry) /* default MAX_UNQUEUE_RETRY */
+        if (++back_off > unqueue_retry) /* default UNQUEUE_RETRY 1 billion */
             goto unqueue;
 
         cpu_relax();
@@ -396,8 +403,11 @@ void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum)
 {
     /*
-     * TODO: need to implement mutex slow path like __mutex_lock_common()
-     * with mutex_optimistic_spin() in linux/kernel/locking/mutex.c
+     * Note: The linux kernel implements additional mutex slow path in mutex.c
+     * __mutex_lock_common() function. We will create another workload which
+     * combines osq_lock and mutex_lock_common. This workload only benchmarks
+     * osq_lock itself. The osq_lock is different from mcs_queue_spinlock because
+     * of tunable unqueue path and backoff sleep time.
      */
     while (!osq_lock(lock, threadnum)) {
         /*

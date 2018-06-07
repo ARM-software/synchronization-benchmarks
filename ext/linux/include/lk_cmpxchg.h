@@ -261,6 +261,20 @@ __LSE_CMPXCHG_CASE(x,  ,  mb_8, al, "memory")
 
 #undef __LSE_CMPXCHG_CASE
 
+/*
+ * aarch64 cmpxchg implementation has been modified to disable runtime
+ * binary patching and use LL/SC assemblies directly without hard branch
+ * and link inside LSE CMPXCHG_GEN. This resolved a bug which was related
+ * to missing CFLAGS_atomic_ll_sc.o in user space. The special CFLAGS in
+ * arch/arm64/lib/Makefile tells the compiler to treat all general
+ * purpose registers (with the exception of the IP registers, which are
+ * already handled by the caller in case of a PLT) as callee-saved, which
+ * allows for efficient runtime patching of the bl instruction in the
+ * caller with an atomic instruction when supported by the CPU. Result
+ * and argument registers are handled correctly, based on the function
+ * prototype. (__LL_SC_CLOBBERS and original __CMPXCHG_CASE)
+ */
+
 #if defined(USE_LSE) /* ARMv8.1 with LSE */
 #define __CMPXCHG_GEN(sfx)                                              \
 static inline unsigned long __cmpxchg##sfx(volatile void *ptr,          \
@@ -326,6 +340,13 @@ __CMPXCHG_GEN(_mb)
 #define cmpxchg(...)        __cmpxchg_wrapper( _mb, __VA_ARGS__)
 #define cmpxchg_local       cmpxchg_relaxed
 
+
+/*
+ * Original ARM64_LSE_ATOMIC_INSN is defined as ALTERNATIVE and would
+ * check runtime CPU capability and dynamically patch kernel binary.
+ * New ARM64_LSE_ATOMIC_INSN has been modified to use the first or second
+ * argument as output string depending on external USE_LSE define.
+ */
 
 #if defined(USE_LSE) /* ARMv8.1 with LSE */
 #define ARM64_LSE_ATOMIC_INSN(llsc, lse)        lse
