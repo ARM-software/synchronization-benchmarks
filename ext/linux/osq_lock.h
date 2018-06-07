@@ -6,6 +6,14 @@
 #ifndef __LINUX_OSQ_LOCK_H
 #define __LINUX_OSQ_LOCK_H
 
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
+#ifdef parse_test_args
+#undef parse_test_args
+#endif
+
 #define initialize_lock(lock, threads) osq_lock_init(lock, threads)
 #define parse_test_args(args, argc, argv) osq_parse_args(args, argc, argv)
 
