@@ -1,11 +1,91 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Based on Linux kernel 4.16.10
- * https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git/commit/?h=v4.16.10&id=b3fdf8284efbc5020dfbd0a28150637189076115
+
+/*
+ * Based on Linux kernel 4.16.10
+ * https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+ * /commit/?h=v4.16.10&id=b3fdf8284efbc5020dfbd0a28150637189076115
+ *
+ * Description:
+ *
+ *      This workload implements kernel 'optimistic spin queue' derived from mcs
+ *      lock. Tunable unqueue_retry times and max_backoff_sleep duration have
+ *      also been added to simulate need_resched() condition and unqueue current
+ *      cpu node from spinning queue and put to sleep.
+ *
+ * Changes from Linux kernel osq_lock.c
+ *
+ *      The original DEFINE_PER_CPU_SHARED_ALIGNED(struct optimistic_spin_node,
+ *      osq_node) was modified to 128 byte aligned optimistic_spin_node C array
+ *      allocated in heap during osq_lock_init() in main thread. It was pointed
+ *      by global_osq_nodepool_ptr pointer. The osq lock queue struct itself was
+ *      declared as a global variable too, which would substitute upper level
+ *      mutex lock struct indicated by lock pointer. Therefore we don't need to
+ *      get the lock pointer from lock_acquire() and lock_release() interface.
+ *      The spinning node structure can be linearly located by osq_nodepool_ptr
+ *      with threadnum/coreid as offset. The tail of osq_lock can be accessed
+ *      by global_osq directly.
+ *
+ *      We haven't changed the algorithm except adding unqueue_retry and max_
+ *      sleep_us as optional backoff sleep to mimic kernel rescheduling events.
+ *      By default we essentially disable unqueue_retry and backoff sleep so
+ *      that osq_lock performance is more stable and similar to mcs queue spin
+ *      lock.
+ *
+ * Internals:
+ *
+ *      In order to port osq_lock from kernel space to user space, we added
+ *      lk_barrier.h and lk_cmpxchg.h to synchronization-benchmarks/ext/linux/
+ *      include. Because there are some special gcc options to restrict compiler
+ *      from allocating x16/x17 registers in arch/arm64/lib/Makefile for
+ *      atomic_ll_sc.o, and our osq_lock.h included from lockhammer.c will not
+ *      generate any other separate object file, we have to modify cmpxchg.h
+ *      and change cmpxchg LLSC/LSE implementation for aarch64.
+ *
+ *      Kernel arm64 cmpxchg.h supports both LLSC (load-link/store-conditional)
+ *      and LSE (Armv8.1 large system extension) via dynamic binary patching.
+ *      If CONFIG_AS_LSE and CONFIG_ARM64_LSE_ATOMICS have been enabled, kernel
+ *      will use Armv8.1 new atomic instructions CAS to implement the compare
+ *      and swap function. This inline function has 3 instructions mov/cas/mov,
+ *      which will be overwritten during system boot up if the CPU doesn't
+ *      support Armv8.1 LSE. The 3 new instructions are bl/nop/nop. The branch
+ *      and link instruction will redirect program flow to Armv8.0 LLSC function
+ *      without saving any of the caller's local registers. These registers are
+ *      guaranteed to be safe because LLSC function in atomic_ll_sc.o only uses
+ *      x16/x17 and LSE caller doesn't use x16/x17.
+ *
+ *      Since lockhammer doesn't have runtime cpu detection, whether to use LLSC
+ *      or LSE is manually defined in lockhammer Makefile. Therefore our new
+ *      cmpxchg is also statically defined without branch and link or binary
+ *      patching. LLSC and LSE cmpxchg will share the same interface but use
+ *      different assembly codes and functions.
+ *
+ * Workings:
+ *
+ *      osq_lock works similar to mcs spinlock except the optional unqueue path.
+ *      Linux kernel qspinlock is slightly different than original mcs spinlock.
+ *
+ * Tuning Parameters
+ *
+ *      Optional unqueue and backoff sleep feature like kernel mutex
+ *
+ *      [-- [-u unqueue_retry]]: how many spin retries before jumping to unqueue
+ *                               path and stop spinning.
+ *
+ *      [-- [-s max_sleep_us]]: how long to sleep after unqueue from osq before
+ *                              another osq_lock() acquisition attempt. This
+ *                              parameter only defines the maximum sleep time in
+ *                              microseconds, each thread will sleep for random
+ *                              time less than this max_sleep_us. The actual
+ *                              sleep time is predetermined during main thread
+ *                              initialization phase with uniform distribution
+ *                              random function rand().
+ *
  */
 
 #ifndef __LINUX_OSQ_LOCK_H
 #define __LINUX_OSQ_LOCK_H
 
+/* redefine initialize_lock and parse_test_args with local functions */
 #ifdef initialize_lock
 #undef initialize_lock
 #endif
@@ -29,7 +109,11 @@
  * An MCS like lock especially tailored for optimistic spinning for sleeping
  * lock implementations (mutex, rwsem, etc).
  *
- * Use 128 bytes alignment to eliminate false sharing for various Armv8 core
+ * Using a single mcs node per CPU is safe because sleeping locks should not be
+ * called from interrupt context and we have preemption disabled while
+ * spinning.
+ *
+ * Using 128 bytes alignment to eliminate false sharing for various Armv8 core
  * cache line size
  */
 struct optimistic_spin_node {
@@ -56,28 +140,30 @@ struct optimistic_spin_queue {
  * we need to tune this parameter for different machines.
  * http://www.brendangregg.com/blog/2017-03-16/perf-sched.html
  */
-#define MAX_SLEEP_US 0
+#define MAX_BACKOFF_SLEEP_US 0
 
 /*
- * Default unqueue_retry times, most system spins at least 500~1000 times
+ * Default unqueue retry times, most system spins at least 500~1000 times
  * before unqueue from optimistic_spin_queue. Default large value simply
  * disables unqueue path and make osq_lock more like mcs_queue_spinlock.
  */
-#define UNQUEUE_RETRY 1000000000
+#define DEFAULT_UNQUEUE_RETRY 2000000000
 
 /* Init macro and function. */
 #define OSQ_LOCK_UNLOCKED { ATOMIC_INIT(OSQ_UNLOCKED_VAL) }
 
-long long unqueue_retry;
-long long max_sleep_us;
-struct optimistic_spin_queue global_osq;
-struct optimistic_spin_node *global_osq_nodepool_ptr;
+/* Newly added global variables used by osq_lock algorithm */
+static long long unqueue_retry;
+static long long max_sleep_us;
+static struct optimistic_spin_queue global_osq;
+static struct optimistic_spin_node *global_osq_nodepool_ptr;
 
-void osq_parse_args(test_args unused, int argc, char** argv) {
+/* Newly added additional tuning parameters for optional backoff sleep */
+static void osq_parse_args(test_args unused, int argc, char** argv) {
     int i = 0;
     char *endptr;
-    unqueue_retry = UNQUEUE_RETRY;
-    max_sleep_us = MAX_SLEEP_US;
+    unqueue_retry = DEFAULT_UNQUEUE_RETRY;
+    max_sleep_us = MAX_BACKOFF_SLEEP_US;
 
     /* extended options retrieved after '--' operator */
     while ((i = getopt(argc, argv, "u:s:")) != -1)
@@ -88,7 +174,8 @@ void osq_parse_args(test_args unused, int argc, char** argv) {
             unqueue_retry = strtoll(optarg, &endptr, 10);
             if ((errno == ERANGE && (unqueue_retry == LONG_LONG_MAX))
                     || (errno != 0 && unqueue_retry == 0) || endptr == optarg) {
-                fprintf(stderr, "unqueue_retry: value unsuitable for 'long long int'\n");
+                fprintf(stderr, "unqueue_retry: value unsuitable "
+                                "for 'long long int'\n");
                 exit(1);
             }
             break;
@@ -98,7 +185,8 @@ void osq_parse_args(test_args unused, int argc, char** argv) {
             max_sleep_us = strtoll(optarg, &endptr, 10);
             if ((errno == ERANGE && (max_sleep_us == LONG_LONG_MAX))
                     || (errno != 0 && max_sleep_us == 0) || endptr == optarg) {
-                fprintf(stderr, "max_sleep_us: value unsuitable for 'long long int'\n");
+                fprintf(stderr, "max_sleep_us: value unsuitable "
+                                "for 'long long int'\n");
                 exit(1);
             } else if (max_sleep_us < 0) {
                 fprintf(stderr, "max_sleep_us must be a positive integer.\n");
@@ -140,8 +228,8 @@ static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
      * If osq spins more than unqueue_retry times, the spinning cpu may backoff
      * and sleep for 1 ~ 10 microseconds (on average 5 microseconds). Each spinning
      * thread uses a different backoff sleep time, and we can adjust the maximum
-     * sleep time by redefine the default MAX_SLEEP_US or tuning via parameter '-s'
-     * By default, we disable this sleep (MAX_SLEEP_US = 0)
+     * sleep time by redefine MAX_BACKOFF_SLEEP_US or tuning via parameter '-s'
+     * By default, we disable this sleep (MAX_BACKOFF_SLEEP_US = 0)
      *
      * Note: Avoid assigning random_sleep a negative value, otherwise usleep would
      * have a very large sleep time after implicit casting negative to uint32_t.
@@ -155,9 +243,6 @@ static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
     /* Initialize global osq tail indicater to OSQ_UNLOCKED_VAL (0: unlocked) */
     atomic_set(&global_osq.tail, OSQ_UNLOCKED_VAL);
 }
-
-bool osq_lock(uint64_t *osq, unsigned long cpu_number);
-void osq_unlock(uint64_t *osq, unsigned long cpu_number);
 
 static inline bool osq_is_locked(struct optimistic_spin_queue *lock)
 {
@@ -244,7 +329,7 @@ osq_wait_next(struct optimistic_spin_queue *lock,
 }
 
 /* uint64_t *osq is ignored because we use &global_osq instead */
-bool osq_lock(uint64_t *osq, unsigned long cpu_number)
+static bool osq_lock(uint64_t *osq, unsigned long cpu_number)
 {
     /* each cpu core has only one thread spinning on one optimistic_spin_node */
     struct optimistic_spin_node *node = global_osq_nodepool_ptr + cpu_number;
@@ -309,7 +394,7 @@ bool osq_lock(uint64_t *osq, unsigned long cpu_number)
          * lock holder.
          */
         //if (need_resched() || vcpu_is_preempted(node_to_cpu(node->prev)))
-        if (++back_off > unqueue_retry) /* default UNQUEUE_RETRY 1 billion */
+        if (++back_off > unqueue_retry) /* DEFAULT_UNQUEUE_RETRY 2 billion */
             goto unqueue;
 
         cpu_relax();
@@ -373,7 +458,7 @@ unqueue:
 }
 
 /* uint64_t *osq is ignored because we use &global_osq instead */
-void osq_unlock(uint64_t *osq, unsigned long cpu_number)
+static void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 {
     /* optimistic_spin_queue stores the current osq tail globally */
     struct optimistic_spin_queue *lock = &global_osq;
@@ -408,7 +493,8 @@ void osq_unlock(uint64_t *osq, unsigned long cpu_number)
 
 
 /* standard lockhammer lock_acquire and lock_release interfaces */
-unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned long threadnum)
+static unsigned long __attribute__((noinline))
+lock_acquire (uint64_t *lock, unsigned long threadnum)
 {
     /*
      * Note: The linux kernel implements additional mutex slow path in mutex.c
