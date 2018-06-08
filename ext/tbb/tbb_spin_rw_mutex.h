@@ -123,6 +123,14 @@
 #ifndef __TBB_spin_mutex_H
 #define __TBB_spin_mutex_H
 
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
+#ifdef parse_test_args
+#undef parse_test_args
+#endif
+
 #define initialize_lock(lock, threads) tbb_init_locks(lock, threads)
 #define parse_test_args(args, argc, argv) tbb_parse_args(args, argc, argv)
 
