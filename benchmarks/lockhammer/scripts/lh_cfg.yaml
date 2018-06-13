@@ -1,0 +1,88 @@
+# CPU Frequency = 2GHz
+# CPU Cycle = 0.5ns
+# Remote DRAM (x86_64 or aarch64, NUMA) = 100ns ~ 300ns
+# Page Fault (4KB, x86_64) = 2000 cycles = 1000ns
+
+
+sweeptest:
+    enabled: False
+    safemode: False
+    execdir: /tmp/synchronization-benchmarks/benchmarks/lockhammer/build
+    workload:
+        - lh_cas_event_mutex
+        - lh_cas_lockref
+        - lh_cas_rw_lock
+        - lh_empty
+        - lh_event_mutex
+        - lh_hybrid_spinlock
+        - lh_hybrid_spinlock_fastdequeue
+        - lh_incdec_refcount
+        - lh_jvm_objectmonitor
+        - lh_osq_lock
+        - lh_queued_spinlock
+        - lh_swap_mutex
+        - lh_tbb_spin_rw_mutex
+        - lh_ticket_spinlock
+    repeat: 7
+    sweepargu: t
+    argumax: 0
+    arguoffset: 0
+    skipsince: 48
+    skipstep: 8
+    argulist:
+        - a: 2000
+          c: 0ns
+          p: 0ns
+        - a: 2000
+          c: 1000ns
+          p: 0ns
+        - a: 2000
+          c: 200ns
+          p: 1000ns
+        - a: 2000
+          c: 1000ns
+          p: 5000ns
+
+
+unittest:
+    enabled: True
+    safemode: True
+    execdir: /tmp/synchronization-benchmarks/benchmarks/lockhammer/build
+    testcase:
+        - cmd:
+            - lh_cas_event_mutex
+            - lh_cas_lockref
+            - lh_cas_rw_lock
+            - lh_empty
+            - lh_event_mutex
+            - lh_incdec_refcount
+            - lh_jvm_objectmonitor
+            - lh_osq_lock
+            - lh_queued_spinlock
+            - lh_swap_mutex
+            - lh_tbb_spin_rw_mutex
+            - lh_ticket_spinlock
+          cmd_aarch64: [lh_hybrid_spinlock, lh_hybrid_spinlock_fastdequeue]
+          cmd_x86_64:
+          t: 0
+          a: 10
+          c: [0ns, 1000ns]
+          p: [0ns, 1000ns]
+
+        - cmd: lh_osq_lock
+          t: 0
+          a: 1000
+          c: 0ns
+          p: 0ns
+          extra:
+              u: 100
+              s: 2
+
+        - cmd: lh_tbb_spin_rw_mutex
+          t: 0
+          a: 1000
+          c: 0ns
+          p: 0ns
+          extra:
+              r: 3
+              m: 1
