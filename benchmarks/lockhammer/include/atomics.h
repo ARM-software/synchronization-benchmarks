@@ -31,6 +31,9 @@
 
 #include <stdint.h>
 
+#ifndef __LH_ATOMICS_H_
+#define __LH_ATOMICS_H_
+
 #ifndef initialize_lock
 	#define initialize_lock(lock, thread)
 #endif
@@ -73,12 +76,70 @@ static inline void wait64 (unsigned long *lock, unsigned long val) {
 	#endif
 }
 
+static inline void wait32 (uint32_t *lock, uint32_t val) {
+	#if defined(__aarch64__)
+	uint32_t tmp;
+
+	asm volatile(
+	"	sevl\n"
+	"1:	wfe\n"
+	"	ldaxr	%w[tmp], %[lock]\n"
+	"	eor	%w[tmp], %w[tmp], %w[val]\n"
+	"	cbnz	%w[tmp], 1b\n"
+	: [tmp] "=&r" (tmp)
+	: [lock] "Q" (*lock), [val] "r" (val)
+	: );
+	#else
+	volatile uint32_t *v = lock;
+
+	while (*v != val);
+	#endif
+}
+
 static inline void prefetch64 (unsigned long *ptr) {
 #if defined(__aarch64__)
 	asm volatile("	prfm	pstl1keep, %[ptr]\n"
 	:
 	: [ptr] "Q" (*(unsigned long *)ptr));
 #endif
+}
+
+static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsigned long val) {
+#if defined(__x86_64__)
+	asm volatile ("lock xaddq %q0, %1\n"
+		      : "+r" (val), "+m" (*(ptr))
+		      : : "memory", "cc");
+#elif defined(__aarch64__)
+#if defined(USE_LSE)
+	unsigned long old;
+
+	asm volatile(
+	"	ldaddal	%[val], %[old], %[ptr]\n"
+	: [old] "=&r" (old), [ptr] "+Q" (*(unsigned long *)ptr)
+	: [val] "r" (val)
+	: );
+
+	val = old;
+#else
+	unsigned long tmp, old, newval;
+
+	asm volatile(
+	"1:	ldaxr	%[old], %[ptr]\n"
+	"	add	%[newval], %[old], %[val]\n"
+	"	stlxr	%w[tmp], %[newval], %[ptr]\n"
+	"	cbnz	%w[tmp], 1b\n"
+	: [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval),
+	  [ptr] "+Q" (*(unsigned long *)ptr)
+	: [val] "Lr" (val)
+	: );
+
+	val = old;
+#endif
+#else
+	/* TODO: builtin atomic call */
+#endif
+
+	return val;
 }
 
 static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned long val) {
@@ -424,3 +485,28 @@ static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned 
 
 	return old;
 }
+
+/* Simple linear barrier routine for synchronizing threads */
+#define SENSE_BIT_MASK 0x1000000000000000
+
+void synchronize_threads(uint64_t *barrier, unsigned long nthrds)
+{
+    uint64_t global_sense = *barrier & SENSE_BIT_MASK;
+    uint64_t tmp_sense = ~global_sense & SENSE_BIT_MASK;
+    uint32_t local_sense = (uint32_t)(tmp_sense >> 32);
+
+    fetchadd64_acquire(barrier, 2);
+    if (*barrier == ((nthrds * 2) | global_sense)) {
+        // Make sure the store gets observed by the system. Reset count
+        // to zero and flip the sense bit.
+        __atomic_store_n(barrier, tmp_sense, __ATOMIC_RELEASE);
+    } else {
+        // Wait only on the sense bit to change.  Avoids race condition
+        // where a waiting thread can miss the update to the 64-bit value
+        // by the thread that releases the barrier and sees an update from
+        // a new thread entering, thus deadlocking us.
+        wait32((uint32_t*)((uint8_t*)barrier + 4), local_sense);
+    }
+}
+
+#endif // __LH_ATOMICS_H_

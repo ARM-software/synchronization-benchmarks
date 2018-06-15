@@ -29,12 +29,18 @@
 #include <pthread.h>
 #include <time.h>
 
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
 #define initialize_lock(lock, threads) jvm_init_locks(lock, threads);
 
 #include "atomics.h"
 
 /*
  * jvm_objectmonitor.h: A model of the OpenJDK ObjectMonitor class.
+ *
+ * based on OpenJDK9
  *
  * What Is It?
  *   In the JVM, the ObjectMonitor class is responsible for

@@ -1,7 +1,20 @@
-CFLAGS=-g -O2 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include
-LDFLAGS=-lpthread
+CFLAGS=-g -O2 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include
+
+ifneq ($(DEBUG_LEVEL),)
+ifeq ($(shell test $(DEBUG_LEVEL) -gt 0; echo $$?),0)
+CFLAGS+=-DDEBUG
+endif
+ifeq ($(shell test $(DEBUG_LEVEL) -gt 1; echo $$?),0)
+CFLAGS+=-DDDEBUG
+endif
+endif
 # LSE support is experimental, please enable the below CFLAGS with caution
-# CFLAGS=-O2 -march=armv8-a+lse -DUSE_LSE -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include
+ifneq ($(LSE_ENABLE),)
+CFLAGS+=-march=armv8-a+lse -DUSE_LSE
+endif
+
+
+LDFLAGS=-lpthread -lm
 
 lh_%: tests/%.h include/atomics.h src/lockhammer.c 
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
@@ -17,7 +30,9 @@ TEST_TARGETS=lh_swap_mutex \
 	lh_ticket_spinlock \
 	lh_queued_spinlock \
 	lh_empty \
-	lh_jvm_objectmonitor
+	lh_jvm_objectmonitor \
+	lh_tbb_spin_rw_mutex \
+	lh_osq_lock
 
 ifeq ($(TARGET_ARCH),aarch64)
 	TEST_TARGETS+=lh_hybrid_spinlock \
@@ -41,11 +56,17 @@ lh_hybrid_spinlock: ../../ext/linux/hybrid_spinlock.h include/atomics.h ../../ex
 lh_hybrid_spinlock_fastdequeue: ../../ext/linux/hybrid_spinlock_fastdequeue.h include/atomics.h ../../ext/linux/include/lk_atomics.h src/lockhammer.c
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
+lh_osq_lock: ../../ext/linux/osq_lock.h ../../ext/linux/include/lk_atomics.h ../../ext/linux/include/lk_barrier.h ../../ext/linux/include/lk_cmpxchg.h include/atomics.h src/lockhammer.c
+	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
+
 lh_queued_spinlock: ../../ext/linux/queued_spinlock.h include/atomics.h ../../ext/linux/include/lk_atomics.h src/lockhammer.c
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
 lh_jvm_objectmonitor: ../../ext/jvm/jvm_objectmonitor.h include/atomics.h src/lockhammer.c
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
+
+lh_tbb_spin_rw_mutex: ../../ext/tbb/tbb_spin_rw_mutex.h ../../ext/tbb/include/tbb.h include/atomics.h src/lockhammer.c
+	${CC} ${CFLAGS} -DNDEBUG -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
 clean:
 	rm -f build/lh_*

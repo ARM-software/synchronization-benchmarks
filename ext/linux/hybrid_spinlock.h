@@ -14,6 +14,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
 #define initialize_lock(lock, threads) mcs_init_locks(lock, threads)
 
 #include "atomics.h"

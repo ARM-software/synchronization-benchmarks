@@ -17,6 +17,11 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 *****************************************************************************/
 
+/* Based on MySQL 5.7 */
+#ifdef initialize_lock
+#undef initialize_lock
+#endif
+
 #define initialize_lock(lock, threads) event_mutex_init(lock, threads)
 
 #include "atomics.h"
