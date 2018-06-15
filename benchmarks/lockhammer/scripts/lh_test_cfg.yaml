@@ -34,8 +34,8 @@
 
 ## Global Settings
 globalcfg:
-    execdir: /tmp/synchronization-benchmarks/benchmarks/lockhammer/build
-    logfile: /tmp/lockhammer.csv
+    execdir: /root/synchronization-benchmarks/benchmarks/lockhammer/build
+    logfile: /root/lockhammer.csv
 
 ## Sweep Test Settings
 #
@@ -52,14 +52,12 @@ globalcfg:
 sweeptest:
     enabled: False
     safemode: False
-    workload:
+    cmd:
         - lh_cas_event_mutex
         - lh_cas_lockref
         - lh_cas_rw_lock
         - lh_empty
         - lh_event_mutex
-        - lh_hybrid_spinlock
-        - lh_hybrid_spinlock_fastdequeue
         - lh_incdec_refcount
         - lh_jvm_objectmonitor
         - lh_osq_lock
@@ -67,10 +65,11 @@ sweeptest:
         - lh_swap_mutex
         - lh_tbb_spin_rw_mutex
         - lh_ticket_spinlock
-    repeat: 7
+    cmd_aarch64: [lh_hybrid_spinlock, lh_hybrid_spinlock_fastdequeue]
+    cmd_x86_64:
+    repeat: 9
     sweepargu: t
     argumax: 0
-    arguoffset: 0
     skipsince: 48
     skipstep: 8
     argulist:
@@ -92,6 +91,7 @@ sweeptest:
 # Common assumptions for unittest:
 # Only cover functional correctness, use as least time as possible
 # Normal runtime should be around 1 minute
+# t=0 means maximum core count
 #
 ##
 unittest:
@@ -113,13 +113,13 @@ unittest:
             - lh_ticket_spinlock
           cmd_aarch64: [lh_hybrid_spinlock, lh_hybrid_spinlock_fastdequeue]
           cmd_x86_64:
-          t: 0
+          t: [1, 0]
           a: 100
           c: [0ns, 50ns]
           p: [0ns, 50ns]
 
         - cmd: lh_osq_lock
-          t: 0
+          t: [1, 0]
           a: 100
           c: 50ns
           p: 0ns
@@ -128,7 +128,7 @@ unittest:
               s: 2
 
         - cmd: lh_tbb_spin_rw_mutex
-          t: 0
+          t: [1, 0]
           a: 100
           c: 50ns
           p: 0ns

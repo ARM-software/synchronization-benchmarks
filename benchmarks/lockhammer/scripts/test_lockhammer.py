@@ -42,19 +42,45 @@ import unittest
 import yaml
 import random
 import multiprocessing
+import socket
+import datetime
 import pprint
 
 
+# config file should be in the same directory of this script
 LH_CFG = "lh_test_cfg.yaml"
-ARGU_LIST = ['a', 'c', 'p']
+# lockhammer.c has these parameters
+LH_ARGU_LIST = ['t', 'a', 'c', 'p']
 
 
+# python unittest framework container class
 @unittest.skipUnless(sys.platform.startswith('linux'), "require Linux")
 @unittest.skipUnless(platform.processor() in ['aarch64', 'x86_64'], "require aarch64 or x86_64")
 class TestLockHammer(unittest.TestCase):
     """Lockhammer integration tests with default parameters """
     pass
 
+# local logging function
+def write_output(stdOut, logFile, paramList):
+    if isinstance(logFile, str):
+        with open(logFile, 'a+') as fd:
+            # make sure key results' position are fixed
+            fd.write(stdOut.rstrip())
+            for param in paramList:
+                fd.write(', ' + str(param))
+            fd.write(os.linesep)
+
+# python unittest framework function constructor
+def construct_func(fullCmd, fullArg, logFile):
+    def test(self):
+        cmdObj = sh.Command(fullCmd)
+        stdOut = str(cmdObj(fullArg))
+        write_output(stdOut, logFile, [str(datetime.datetime.now()), socket.getfqdn(), fullCmd] + fullArg)
+        regEx = "[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*"
+        self.assertRegex(stdOut, regEx, "This program has not run to completion.")
+    return test
+
+# local config loader
 def read_config(lhCfgStr):
     cfg = None
     with open(lhCfgStr, 'r') as fd:
@@ -64,28 +90,12 @@ def read_config(lhCfgStr):
             print(exc)
     return cfg
 
-def write_output(stdOut, logFile, paramList):
-    if isinstance(logFile, str):
-        with open(logFile, 'a+') as fd:
-            for param in paramList:
-                fd.write(str(param) + ', ')
-            fd.write(stdOut)
-
 def default_value(dictCfg, key, dft):
     var = dft
     if isinstance(dictCfg, dict):
         if key in dictCfg:
             var = dictCfg[key]
     return var
-
-def construct_func(fullCmd, fullArg, logFile):
-    def test(self):
-        cmdObj = sh.Command(fullCmd)
-        stdOut = str(cmdObj(fullArg))
-        write_output(stdOut, logFile, [fullCmd] + fullArg)
-        regEx = "[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*"
-        self.assertRegex(stdOut, regEx, "This program has not run to completion.")
-    return test
 
 def prepare_logfile(logFile):
     if isinstance(logFile, str):
@@ -97,6 +107,7 @@ def prepare_logfile(logFile):
                 print("Cannot create or locate logfile.")
                 sys.exit(3)
 
+# -s safemode flag should be inserted before --
 def insert_safe_flag(paramList):
     if '--' in paramList:
         paramList.insert(paramList.index('--'), '-s')
@@ -104,76 +115,7 @@ def insert_safe_flag(paramList):
         paramList.append('-s')
     return paramList
 
-def unittest_base_param(testCfg):
-    outParam = []
-    if 't' in testCfg:
-        if isinstance(testCfg['t'], list):
-            for thread in testCfg['t']:
-                if thread == 0:
-                    outParam.append(['-t', multiprocessing.cpu_count()])
-                else:
-                    outParam.append(['-t', thread])
-        elif isinstance(testCfg['t'], int):
-            if testCfg['t'] == 0:
-                outParam.append(['-t', multiprocessing.cpu_count()])
-            else:
-                outParam.append(['-t', testCfg['t']])
-        else:
-            outParam.append(['-t', testCfg['t']])
-    else:
-        outParam = [['-t', multiprocessing.cpu_count()]]
-
-    return outParam
-
-def expand_param(ctrl, valueList):
-    outParam = []
-    if isinstance(valueList, list):
-        for value in valueList:
-            outParam.append(['-' + ctrl, value])
-    elif isinstance(valueList, type(None)):
-        outParam.append(['-' + ctrl])
-    else:
-        outParam.append(['-' + ctrl, valueList])
-    return outParam
-
-def list_product(origListList, paramListList):
-    newListList = []
-    for orig in origListList:
-        for param in paramListList:
-            if isinstance(orig, list) and isinstance(param, list):
-                newListList.append(orig + param)
-    if newListList:
-        return newListList
-    else:
-        return origListList
-
-def prepare_param(arguList):
-    arguLL = []
-    if isinstance(arguList, list):
-        for elem in arguList:
-            paramList = []
-            for key in elem:
-                paramList.extend(['-'+key, elem[key]])
-            arguLL.append(paramList)
-    return arguLL
-
-def generate_param(testCfg):
-    origLL = unittest_base_param(testCfg)
-    prodCount = len(origLL)
-    for key in testCfg:
-        if key in ARGU_LIST:
-            paramLL = expand_param(key, testCfg[key])
-            prodCount *= len(paramLL)
-            origLL.extend(list_product(origLL, paramLL))
-        elif key == 'extra':
-            origLL = [x+y for x,y in zip(origLL, [['--']]*len(origLL))]
-            for extKey in testCfg['extra']:
-                paramLL = expand_param(extKey, testCfg['extra'][extKey])
-                prodCount *= len(paramLL)
-                origLL.extend(list_product(origLL, paramLL))
-
-    return origLL[len(origLL) - prodCount:]
-
+# convert cmdName + paramList to a string
 def full_func_name(cmdName, paramList, fillZero):
     fullName = cmdName
     if isinstance(paramList, list):
@@ -188,21 +130,106 @@ def full_func_name(cmdName, paramList, fillZero):
         fullName += str(random.random())
     return fullName
 
-def calc_sweep_list(maxV, offsetV, skipV, stepV):
-    if maxV == 0:
+# convert parameter from {key:value} to string list
+def expand_param(ctrl, valueList):
+    outParam = []
+    if isinstance(valueList, list):
+        for value in valueList:
+            if ctrl == 't' and value == 0:
+                outParam.append(['-t', multiprocessing.cpu_count()])
+            else:
+                outParam.append(['-' + ctrl, value])
+    elif isinstance(valueList, type(None)):
+        outParam.append(['-' + ctrl])
+    elif isinstance(valueList, int):
+        if ctrl == 't' and valueList == 0:
+            outParam.append(['-t', multiprocessing.cpu_count()])
+        else:
+            outParam.append(['-' + ctrl, valueList])
+    else:
+        outParam.append(['-' + ctrl, valueList])
+    return outParam
+
+# formulate parameter combinations
+def list_product(origListList, paramListList):
+    newListList = []
+    for orig in origListList:
+        for param in paramListList:
+            if isinstance(orig, list) and isinstance(param, list):
+                newListList.append(orig + param)
+    if newListList:
+        return newListList
+    else:
+        return origListList
+
+# generate all possible parameter list for unittest
+def generate_param(testCfg):
+    origLL = [[]]
+
+    # lockhammer normal parameters
+    for key in testCfg:
+        if key in LH_ARGU_LIST:
+            paramLL = expand_param(key, testCfg[key])
+            origLL = list_product(origLL, paramLL)
+
+    # make sure extra parameters are generated after normal parameter
+    for key in testCfg:
+        if key == 'extra':
+            origLL = [x+y for x,y in zip(origLL, [['--']]*len(origLL))]
+            for extKey in testCfg['extra']:
+                paramLL = expand_param(extKey, testCfg['extra'][extKey])
+                origLL = list_product(origLL, paramLL)
+
+    return origLL
+
+# generate all possible parameter list for sweeptest
+def prepare_param(arguList):
+    arguLL = []
+    if isinstance(arguList, list):
+        for elem in arguList:
+            paramList = []
+            for key in elem:
+                paramList.extend(['-'+key, elem[key]])
+            arguLL.append(paramList)
+    return arguLL
+
+# calculate sweeping values for sweeptest
+def calc_sweep_list(maxV, skipV, stepV):
+    if maxV == 0 or not isinstance(maxV, int):
         maxV = multiprocessing.cpu_count()
+    if skipV <= 0 or not isinstance(skipV, int):
+        skipV = 1
+    if stepV <= 0 or not isinstance(stepV, int):
+        stepV = maxV
 
     if skipV < maxV:
-        sweepList = [x+1 for x in list(range(skipV))]
-        sweepList += list(range(skipV+stepV, maxV+stepV, stepV))
+        # construct a list with range [1,skipV]
+        sweepList = list(range(1, skipV+1))
+        # append range from skipV(included) to maxV(included) stepped with stepV
+        sweepList += list(range(skipV, maxV+1, stepV))
         # make sure half-socket, single-socket, full-socket core count are covered
         sweepList += [int(maxV/4), int(maxV/2), int(maxV/4*3), maxV]
-        # remove duplicates
+        # remove duplicates and sort result list
         sweepList = list(set(sweepList))
+        sweepList.sort()
     else:
-        sweepList = [x+1 for x in list(range(maxV))]
+        sweepList = list(range(1, maxV+1))
 
-    return [v+offsetV for v in sweepList]
+    return sweepList
+
+# some workloads are only valid for certain architectures
+def append_arch_cmd(testCfg, cmdList):
+    if isinstance(testCfg, dict) and isinstance(cmdList, list):
+        if 'cmd_aarch64' in testCfg and platform.processor() == 'aarch64':
+            if isinstance(testCfg['cmd_aarch64'], list):
+                cmdList.extend(testCfg['cmd_aarch64'])
+            elif isinstance(testCfg['cmd_aarch64'], str):
+                cmdList.append(testCfg['cmd_aarch64'])
+        elif 'cmd_x86_64' in testCfg and platform.processor() == 'x86_64':
+            if isinstance(testCfg['cmd_x86_64'], list):
+                cmdList.extend(testCfg['cmd_x86_64'])
+            elif isinstance(testCfg['cmd_x86_64'], str):
+                cmdList.append(testCfg['cmd_x86_64'])
 
 def generate_unittest(className, lhCfg, testCfg):
     globalCfg = default_value(lhCfg, 'globalcfg', {})
@@ -223,12 +250,7 @@ def generate_unittest(className, lhCfg, testCfg):
         print("Command name in unittest should be either a string or a list of strings.")
         sys.exit(2)
 
-    if 'cmd_aarch64' in testCfg and platform.processor() == 'aarch64':
-        if not testCfg['cmd_aarch64']:
-            allCmd.extend(testCfg['cmd_aarch64'])
-    elif 'cmd_x86_64' in testCfg and platform.processor() == 'x86_64':
-        if not testCfg['cmd_x86_64']:
-            allCmd.extend(testCfg['cmd_x86_64'])
+    append_arch_cmd(testCfg, allCmd)
 
     for oneCmd in allCmd:
         for oneParam in generate_param(testCfg):
@@ -238,6 +260,23 @@ def generate_unittest(className, lhCfg, testCfg):
             testFunc = construct_func(testExec, oneParam, logFile)
             fullCmdName = full_func_name(oneCmd, oneParam, False)
             setattr(className, "test_" + fullCmdName, testFunc)
+
+def build_unit_test(lhCfg):
+    if not isinstance(lhCfg, dict):
+        print("Error, cannot parse lockhammer configuration yaml file.")
+        sys.exit(2)
+
+    unitCfg = default_value(lhCfg, 'unittest', {'enabled': False})
+
+    if unitCfg['enabled']:
+        if isinstance(unitCfg['testcase'], list):
+            for oneCase in unitCfg['testcase']:
+                generate_unittest(TestLockHammer, lhCfg, oneCase)
+        elif isinstance(unitCfg['testcase'], dict):
+            generate_unittest(TestLockHammer, lhCfg, unitCfg['testcase'])
+        else:
+            print("Cannot extract any testcase from unittest dict.")
+            sys.exit(2)
 
 def generate_sweeptest(className, lhCfg):
     globalCfg = default_value(lhCfg, 'globalcfg', {})
@@ -249,18 +288,17 @@ def generate_sweeptest(className, lhCfg):
     repeatCnt = default_value(sweepCfg, 'repeat', 7)
     sweepArgu = default_value(sweepCfg, 'sweepargu', 't')
     arguMax = default_value(sweepCfg, 'argumax', 0)
-    arguOffset = default_value(sweepCfg, 'arguoffset', 0)
     skipSince = default_value(sweepCfg, 'skipsince', 48)
     skipStep = default_value(sweepCfg, 'skipstep', 8)
-    workCommand = default_value(sweepCfg, 'workload', ['lh_empty'])
-    workArgument = default_value(sweepCfg, 'argulist', [{}])
+    lhCommand = default_value(sweepCfg, 'cmd', [])
+    lhArgument = default_value(sweepCfg, 'argulist', [{}])
 
     prepare_logfile(logFile)
+    sweepList = calc_sweep_list(arguMax, skipSince, skipStep)
+    append_arch_cmd(sweepCfg, lhCommand)
 
-    sweepList = calc_sweep_list(arguMax, arguOffset, skipSince, skipStep)
-
-    for oneCmd in workCommand:
-        for oneParam in prepare_param(workArgument):
+    for oneCmd in lhCommand:
+        for oneParam in prepare_param(lhArgument):
             for sweepParam in sweepList:
                 newOneParam = ['-'+sweepArgu, sweepParam] + oneParam
                 if safeMode:
@@ -285,26 +323,10 @@ def build_sweep_test(lhCfg):
             print("Error, sweeptest should be a dict.")
             sys.exit(2)
 
-def build_unit_test(lhCfg):
-    if not isinstance(lhCfg, dict):
-        print("Error, cannot parse lockhammer configuration yaml file.")
-        sys.exit(2)
 
-    unitCfg = default_value(lhCfg, 'unittest', {'enabled': False})
-
-    if unitCfg['enabled']:
-        if isinstance(unitCfg['testcase'], list):
-            for oneCase in unitCfg['testcase']:
-                generate_unittest(TestLockHammer, lhCfg, oneCase)
-        elif isinstance(unitCfg['testcase'], dict):
-            generate_unittest(TestLockHammer, lhCfg, unitCfg['testcase'])
-        else:
-            print("Cannot extract any testcase from unittest dict.")
-            sys.exit(2)
-
-
+# main function
 if __name__ == "__main__":
-    lhConfig = read_config(LH_CFG)
+    lhConfig = read_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), LH_CFG))
     pprint.pprint(lhConfig)
     build_unit_test(lhConfig)
     build_sweep_test(lhConfig)
