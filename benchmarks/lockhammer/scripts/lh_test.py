@@ -1,7 +1,42 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2018, ARM Limited. All rights reserved.
+#
+# SPDX-License-Identifier:    BSD-3-Clause
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
+#
+# Redistributions in binary form must reproduce the above copyright notice, this
+# list of conditions and the following disclaimer in the documentation and/or
+# other materials provided with the distribution.
+#
+# Neither the name of ARM Limited nor the names of its contributors may be used
+# to endorse or promote products derived from this software without specific
+# prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+# TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of this project.
+
 import sys
 import os
 import sh
+import errno
 import platform
 import unittest
 import yaml
@@ -29,20 +64,38 @@ def read_config(lhCfgStr):
             print(exc)
     return cfg
 
+def write_output(stdOut, logFile, paramList):
+    if isinstance(logFile, str):
+        with open(logFile, 'a+') as fd:
+            for param in paramList:
+                fd.write(str(param) + ', ')
+            fd.write(stdOut)
+
 def default_value(dictCfg, key, dft):
-    if key in dictCfg:
-        var = dictCfg[key]
-    else:
-        var = dft
+    var = dft
+    if isinstance(dictCfg, dict):
+        if key in dictCfg:
+            var = dictCfg[key]
     return var
 
-def construct_func(fullCmd, fullArg):
+def construct_func(fullCmd, fullArg, logFile):
     def test(self):
         cmdObj = sh.Command(fullCmd)
-        stdOut = str(cmdObj(fullArg, _err_to_out=True))
+        stdOut = str(cmdObj(fullArg))
+        write_output(stdOut, logFile, [fullCmd] + fullArg)
         regEx = "[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*"
         self.assertRegex(stdOut, regEx, "This program has not run to completion.")
     return test
+
+def prepare_logfile(logFile):
+    if isinstance(logFile, str):
+        try:
+            open(logFile, 'w')
+            os.remove(logFile)
+        except OSError as exc:
+            if exc.errno != errno.ENOENT:  # no such file or directory
+                print("Cannot create or locate logfile.")
+                sys.exit(3)
 
 def insert_safe_flag(paramList):
     if '--' in paramList:
@@ -110,13 +163,13 @@ def generate_param(testCfg):
     for key in testCfg:
         if key in ARGU_LIST:
             paramLL = expand_param(key, testCfg[key])
-            prodCount = prodCount * len(paramLL)
+            prodCount *= len(paramLL)
             origLL.extend(list_product(origLL, paramLL))
         elif key == 'extra':
             origLL = [x+y for x,y in zip(origLL, [['--']]*len(origLL))]
             for extKey in testCfg['extra']:
                 paramLL = expand_param(extKey, testCfg['extra'][extKey])
-                prodCount = prodCount * len(paramLL)
+                prodCount *= len(paramLL)
                 origLL.extend(list_product(origLL, paramLL))
 
     return origLL[len(origLL) - prodCount:]
@@ -151,7 +204,16 @@ def calc_sweep_list(maxV, offsetV, skipV, stepV):
 
     return [v+offsetV for v in sweepList]
 
-def generate_unittest(className, unitTests, testCfg, pathStr, safeMode):
+def generate_unittest(className, lhCfg, testCfg):
+    globalCfg = default_value(lhCfg, 'globalcfg', {})
+    unitCfg = default_value(lhCfg, 'unittest', {})
+
+    execDir = default_value(globalCfg, 'execdir', os.path.join("..", "build"))
+    logFile = default_value(globalCfg, 'logfile', None)
+    safeMode = default_value(unitCfg, 'safemode', True)
+
+    prepare_logfile(logFile)
+
     allCmd = []
     if isinstance(testCfg['cmd'], list):
         allCmd = testCfg['cmd']
@@ -172,14 +234,18 @@ def generate_unittest(className, unitTests, testCfg, pathStr, safeMode):
         for oneParam in generate_param(testCfg):
             if safeMode:
                 oneParam = insert_safe_flag(oneParam)
-            testExec = os.path.join(pathStr, oneCmd)
-            testFunc = construct_func(testExec, oneParam)
+            testExec = os.path.join(execDir, oneCmd)
+            testFunc = construct_func(testExec, oneParam, logFile)
             fullCmdName = full_func_name(oneCmd, oneParam, False)
             setattr(className, "test_" + fullCmdName, testFunc)
 
-def generate_sweeptest(className, sweepTests, sweepCfg):
+def generate_sweeptest(className, lhCfg):
+    globalCfg = default_value(lhCfg, 'globalcfg', {})
+    sweepCfg = default_value(lhCfg, 'sweeptest', {'enabled': False})
+
+    execDir = default_value(globalCfg, 'execdir', os.path.join("..", "build"))
+    logFile = default_value(globalCfg, 'logfile', None)
     safeMode = default_value(sweepCfg, 'safemode', False)
-    execDir = default_value(sweepCfg, 'execdir', os.path.join("..", "build"))
     repeatCnt = default_value(sweepCfg, 'repeat', 7)
     sweepArgu = default_value(sweepCfg, 'sweepargu', 't')
     arguMax = default_value(sweepCfg, 'argumax', 0)
@@ -189,49 +255,52 @@ def generate_sweeptest(className, sweepTests, sweepCfg):
     workCommand = default_value(sweepCfg, 'workload', ['lh_empty'])
     workArgument = default_value(sweepCfg, 'argulist', [{}])
 
+    prepare_logfile(logFile)
+
     sweepList = calc_sweep_list(arguMax, arguOffset, skipSince, skipStep)
 
     for oneCmd in workCommand:
         for oneParam in prepare_param(workArgument):
             for sweepParam in sweepList:
-                newOneParam = oneParam + ['-'+sweepArgu, sweepParam]
+                newOneParam = ['-'+sweepArgu, sweepParam] + oneParam
                 if safeMode:
                     newOneParam = insert_safe_flag(newOneParam)
                 testExec = os.path.join(execDir, oneCmd)
                 for rep in range(repeatCnt):
-                    testFunc = construct_func(testExec, newOneParam)
+                    testFunc = construct_func(testExec, newOneParam, logFile)
                     fullCmdName = full_func_name(oneCmd, newOneParam + ['-'+str(rep)], True)
                     setattr(className, "test_" + fullCmdName, testFunc)
 
-def build_unit_test(lhCfg):
-    uTests = []
-    if not isinstance(lhCfg, dict):
-        print("Error, cannot parse lockhammer configuration yaml file.")
-        sys.exit(2)
-    if 'unittest' in lhCfg:
-        unitCfg = lhCfg['unittest']
-        if unitCfg['enabled']:
-            safeMode = default_value(unitCfg, 'safemode', True)
-            execDir = default_value(unitCfg, 'execdir', os.path.join("..", "build"))
-
-            if isinstance(unitCfg['testcase'], list):
-                for oneCase in unitCfg['testcase']:
-                    uTests = generate_unittest(TestLockHammer, uTests, oneCase, execDir, safeMode)
-            elif isinstance(unitCfg['testcase'], dict):
-                uTests = generate_unittest(TestLockHammer, uTests, unitCfg['testcase'], execDir, safeMode)
-            else:
-                print("Cannot extract any testcase from unittest dict.")
-                sys.exit(2)
-
 def build_sweep_test(lhCfg):
-    sTests = []
     if not isinstance(lhCfg, dict):
         print("Error, cannot parse lockhammer configuration yaml file.")
         sys.exit(2)
-    if 'sweeptest' in lhCfg:
-        sweepCfg = lhCfg['sweeptest']
-        if sweepCfg['enabled']:
-            sTests = generate_sweeptest(TestLockHammer, sTests, lhCfg['sweeptest'])
+
+    sweepCfg = default_value(lhCfg, 'sweeptest', {'enabled': False})
+
+    if sweepCfg['enabled']:
+        if isinstance(sweepCfg, dict):
+            generate_sweeptest(TestLockHammer, lhCfg)
+        else:
+            print("Error, sweeptest should be a dict.")
+            sys.exit(2)
+
+def build_unit_test(lhCfg):
+    if not isinstance(lhCfg, dict):
+        print("Error, cannot parse lockhammer configuration yaml file.")
+        sys.exit(2)
+
+    unitCfg = default_value(lhCfg, 'unittest', {'enabled': False})
+
+    if unitCfg['enabled']:
+        if isinstance(unitCfg['testcase'], list):
+            for oneCase in unitCfg['testcase']:
+                generate_unittest(TestLockHammer, lhCfg, oneCase)
+        elif isinstance(unitCfg['testcase'], dict):
+            generate_unittest(TestLockHammer, lhCfg, unitCfg['testcase'])
+        else:
+            print("Cannot extract any testcase from unittest dict.")
+            sys.exit(2)
 
 
 if __name__ == "__main__":
