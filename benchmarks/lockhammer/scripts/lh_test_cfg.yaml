@@ -34,8 +34,8 @@
 
 ## Global Settings
 globalcfg:
-    execdir: /root/synchronization-benchmarks/benchmarks/lockhammer/build
-    logfile: /root/lockhammer.csv
+    execdir: ../build
+    logfile: lockhammer.csv
 
 ## Sweep Test Settings
 #

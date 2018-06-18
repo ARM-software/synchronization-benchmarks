@@ -256,7 +256,7 @@ def generate_unittest(className, lhCfg, testCfg):
         for oneParam in generate_param(testCfg):
             if safeMode:
                 oneParam = insert_safe_flag(oneParam)
-            testExec = os.path.join(execDir, oneCmd)
+            testExec = os.path.join(os.path.dirname(os.path.abspath(__file__)), execDir, oneCmd)
             testFunc = construct_func(testExec, oneParam, logFile)
             fullCmdName = full_func_name(oneCmd, oneParam, False)
             setattr(className, "test_" + fullCmdName, testFunc)
@@ -303,7 +303,7 @@ def generate_sweeptest(className, lhCfg):
                 newOneParam = ['-'+sweepArgu, sweepParam] + oneParam
                 if safeMode:
                     newOneParam = insert_safe_flag(newOneParam)
-                testExec = os.path.join(execDir, oneCmd)
+                testExec = os.path.join(os.path.dirname(os.path.abspath(__file__)), execDir, oneCmd)
                 for rep in range(repeatCnt):
                     testFunc = construct_func(testExec, newOneParam, logFile)
                     fullCmdName = full_func_name(oneCmd, newOneParam + ['-'+str(rep)], True)
