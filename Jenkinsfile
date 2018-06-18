@@ -53,7 +53,7 @@ node {
             def scr = new File("${it}/scripts/")
             scr.traverse(type: FILES, filter: ~/.*\/test[^\/]*/) {
                 try {
-                    sh it
+                    sh "${it}"
                 }
                 catch (exc) {
                     fails.add(it.toString().substring(env.WORKSPACE.length()))
