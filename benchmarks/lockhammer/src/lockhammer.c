@@ -179,8 +179,11 @@ int main(int argc, char** argv)
                 return 1;
             }
             csv = strtok(optarg, ",");
-            for (int i = 0; i < num_cores && csv != NULL; csv = strtok(NULL, ","), ++i)
-                *(args.pinorder + i) = strtol(csv, (char **) NULL, 10);
+            for (int i = 0; i < num_cores && csv != NULL; csv = strtok(NULL, ","), ++i) {
+                optval = strtol(csv, (char **) NULL, 10);
+                if (optval >= 0 && optval < num_cores) *(args.pinorder + i) = optval;
+                else fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
+            }
             break;
           case 's':
             args.safemode = 1;
