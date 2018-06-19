@@ -50,6 +50,7 @@ struct thread_args {
     unsigned long hold, post;
     Units hold_unit, post_unit;
     double tickspns;
+    int *pinorder;
 };
 typedef struct thread_args thread_args;
 
@@ -62,6 +63,7 @@ struct test_args {
     Units nparallel_units;
     unsigned long ileave;
     unsigned char safemode;
+    int *pinorder;
 };
 typedef struct test_args test_args;
 
