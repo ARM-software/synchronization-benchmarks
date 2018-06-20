@@ -67,7 +67,7 @@ sweeptest:
         - lh_ticket_spinlock
     cmd_aarch64: [lh_hybrid_spinlock, lh_hybrid_spinlock_fastdequeue]
     cmd_x86_64:
-    repeat: 9
+    repeat: 1
     sweepargu: t
     argumax: 0
     skipsince: 48
@@ -76,15 +76,19 @@ sweeptest:
         - a: 5000
           c: 0ns
           p: 0ns
+          o: lstopo
         - a: 5000
           c: 1000ns
           p: 0ns
+          o: lstopo
         - a: 5000
           c: 200ns
           p: 1000ns
+          o: lstopo
         - a: 5000
           c: 1000ns
           p: 5000ns
+          o: lstopo
 
 ## Unittest Settings
 #
@@ -123,6 +127,7 @@ unittest:
           a: 100
           c: 50ns
           p: 0ns
+          o: lstopo
           extra:
               u: 10
               s: 2
@@ -132,6 +137,8 @@ unittest:
           a: 100
           c: 50ns
           p: 0ns
+          i: 2
+          o: '0,1,2,3'
           extra:
               r: 4
               m: 1
