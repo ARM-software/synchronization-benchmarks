@@ -67,7 +67,7 @@ sweeptest:
         - lh_ticket_spinlock
     cmd_aarch64: [lh_hybrid_spinlock, lh_hybrid_spinlock_fastdequeue]
     cmd_x86_64:
-    repeat: 7
+    repeat: 9
     sweepargu: t
     argumax: 0
     skipsince: 48
