@@ -62,6 +62,11 @@ void print_usage (char *invoc) {
             "[-p <#>[ns | in] parallelizable iterations measured in ns or (in)structions, "
             "if no suffix, assumes (in)structions]\n\t"
             "[-s safe-mode operation for running as non-root\n\t"
+            "[-i interleave value for thread pinning order, for example, 1 means "
+            "sequential increasing, 2 means pinning hyperthread of the same core first "
+            "before the next core.]\n\t"
+            "[-o arbitrary core pinning order separated by comma without space, command "
+            "lstopo can be used to deduce the correct order.]\n\t"
             "[-- <test specific arguments>]\n", invoc);
 }
 
@@ -69,7 +74,7 @@ int main(int argc, char** argv)
 {
     struct sched_param sparam;
 
-    unsigned long i;
+    unsigned long opt;
     unsigned long num_cores;
     unsigned long result;
     unsigned long sched_elapsed = 0, real_elapsed = 0, realcpu_elapsed = 0;
@@ -84,16 +89,18 @@ int main(int argc, char** argv)
                        .ncrit = 0,
                        .nparallel = 0,
                        .ileave = 1,
-                       .safemode = 0 };
+                       .safemode = 0,
+                       .pinorder = NULL };
 
     opterr = 0;
 
-    while ((i = getopt(argc, argv, "t:a:c:p:i:s")) != -1)
+    while ((opt = getopt(argc, argv, "t:a:c:p:i:o:s")) != -1)
     {
         long optval = 0;
         int len = 0;
         char buf[128];
-        switch (i) {
+        char *csv = NULL;
+        switch (opt) {
           case 't':
             optval = strtol(optarg, (char **) NULL, 10);
             /* Do not allow number of threads to exceed online cores
@@ -158,12 +165,26 @@ int main(int argc, char** argv)
           case 'i':
             optval = strtol(optarg, (char **) NULL, 10);
             if (optval < 0) {
-                fprintf(stderr, "ERROR: Core interleave must be positive.\n");
+                fprintf(stderr, "ERROR: core interleave must be positive.\n");
                 return 1;
             }
             else {
                 args.ileave = optval;
             }
+            break;
+          case 'o':
+            args.pinorder = calloc(num_cores, sizeof(int));
+            if (args.pinorder == NULL) {
+                fprintf(stderr, "ERROR: Cannot allocate enough memory for pinorder structure.\n");
+                return 1;
+            }
+            csv = strtok(optarg, ",");
+            for (int i = 0; i < num_cores && csv != NULL; csv = strtok(NULL, ","), ++i) {
+                optval = strtol(csv, (char **) NULL, 10);
+                if (optval >= 0 && optval < num_cores) *(args.pinorder + i) = optval;
+                else fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
+            }
+            break;
           case 's':
             args.safemode = 1;
             break;
@@ -213,7 +234,7 @@ int main(int argc, char** argv)
     tickspns = (double)timer_get_cnt_freq() / 1000000000.0; 
 
     thread_args t_args[args.nthrds];
-    for (i = 0; i < args.nthrds; ++i) {
+    for (int i = 0; i < args.nthrds; ++i) {
         hmrs[i] = 0;
         t_args[i].ncores = num_cores;
         t_args[i].nthrds = args.nthrds;
@@ -230,11 +251,12 @@ int main(int argc, char** argv)
         t_args[i].post = args.nparallel;
         t_args[i].post_unit = args.nparallel_units;
         t_args[i].tickspns = tickspns;
+        t_args[i].pinorder = args.pinorder;
 
         pthread_create(&hmr_threads[i], &hmr_attr, hmr, (void*)(&t_args[i]));
     }
 
-    for (i = 0; i < args.nthrds; ++i) {
+    for (int i = 0; i < args.nthrds; ++i) {
         result = pthread_join(hmr_threads[i], NULL);
     }
     /* "Marshal" thread will collect start time once all threads have
@@ -245,7 +267,7 @@ int main(int argc, char** argv)
     pthread_attr_destroy(&hmr_attr);
 
     result = 0;
-    for (i = 0; i < args.nthrds; ++i) {
+    for (int i = 0; i < args.nthrds; ++i) {
         result += hmrs[i];
         sched_elapsed += hmrtime[i];
         realcpu_elapsed += hmrrealtime[i];
@@ -320,6 +342,7 @@ void* hmr(void *ptr)
     unsigned long hold_count = x->hold;
     unsigned long post_count = x->post;
     double tickspns = x->tickspns;
+    int *pinorder = x->pinorder;
 
     unsigned long mycore = 0;
 
@@ -356,40 +379,48 @@ void* hmr(void *ptr)
         /* Wait for all threads to arrive from calibrating. */ 
         synchronize_threads(&calibrate_lock, nthrds);
         clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
-    }
-    else {
-        /* Calculate affinity mask for my core and set affinity */
-        /* The concept of "interleave" is used here to allow for specifying
-         * whether increasing cores counts first populate physical cores or
-         * hardware threads within the same physical core. This assumes the
-         * following relationship between logical core numbers (N), hardware
-         * threads per core (K), and physical cores (N/K):
-         *
-         *  physical core |___core_0__|___core_1__|_core_N/K-1|
-         *         thread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
-         *  --------------|-|-|---|---|-|-|---|---|-|-|---|---|
-         *   logical core | | |   |   | | |   |   | | |   |   |
-         *              0 |*| |   |   | | |   |   | | |   |   |
-         *              1 | | |   |   |*| |   |   | | |   |   |
-         *            ... |...................................|
-         *          N/K-1 | | |   |   | | |   |   |*| |   |   |
-         *            N/K | |*|   |   | | |   |   | | |   |   |
-         *          N/K+1 | | |   |   | |*|   |   | | |   |   |
-         *            ... |...................................|
-         *            N-K | | |   | * | | |   |   | | |   |   |
-         *          N-K+1 | | |   |   | | |   | * | | |   |   |
-         *            ... |...................................|
-         *            N-1 | | |   |   | | |   |   | | |   | * |
-         *
-         * Thus by setting the interleave value to 1 physical cores are filled
-         * first with subsequent cores past N/K adding subsequent threads
-         * on already populated physical cores.  On the other hand, setting
-         * interleave to K causes the algorithm to populate 0, N/K, 2N/K and
-         * so on filling all hardware threads in the first physical core prior
-         * to populating any threads on the second physical core.
+    } else {
+        /*
+         * Non-zero core value indicates next core to pin, zero value means
+         * fallback to default interleave mode.
          */
-        CPU_SET(((mycore * ncores / ileave) % ncores + (mycore / ileave)), &affin_mask);
-        sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+        if (pinorder && *(pinorder + mycore)) {
+            CPU_SET(*(pinorder + mycore), &affin_mask);
+            sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+        } else {
+            /* Calculate affinity mask for my core and set affinity */
+            /* The concept of "interleave" is used here to allow for specifying
+             * whether increasing cores counts first populate physical cores or
+             * hardware threads within the same physical core. This assumes the
+             * following relationship between logical core numbers (N), hardware
+             * threads per core (K), and physical cores (N/K):
+             *
+             *  physical core |___core_0__|___core_1__|_core_N/K-1|
+             *         thread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
+             *  --------------|-|-|---|---|-|-|---|---|-|-|---|---|
+             *   logical core | | |   |   | | |   |   | | |   |   |
+             *              0 |*| |   |   | | |   |   | | |   |   |
+             *              1 | | |   |   |*| |   |   | | |   |   |
+             *            ... |...................................|
+             *          N/K-1 | | |   |   | | |   |   |*| |   |   |
+             *            N/K | |*|   |   | | |   |   | | |   |   |
+             *          N/K+1 | | |   |   | |*|   |   | | |   |   |
+             *            ... |...................................|
+             *            N-K | | |   | * | | |   |   | | |   |   |
+             *          N-K+1 | | |   |   | | |   | * | | |   |   |
+             *            ... |...................................|
+             *            N-1 | | |   |   | | |   |   | | |   | * |
+             *
+             * Thus by setting the interleave value to 1 physical cores are filled
+             * first with subsequent cores past N/K adding subsequent threads
+             * on already populated physical cores.  On the other hand, setting
+             * interleave to K causes the algorithm to populate 0, N/K, 2N/K and
+             * so on filling all hardware threads in the first physical core prior
+             * to populating any threads on the second physical core.
+             */
+            CPU_SET(((mycore * ncores / ileave) % ncores + (mycore / ileave)), &affin_mask);
+            sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+        }
 
         fetchadd64_release(&ready_lock, 1);
 
