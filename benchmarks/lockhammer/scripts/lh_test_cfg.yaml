@@ -137,7 +137,7 @@ unittest:
           a: 100
           c: 50ns
           p: 0ns
-          i: 2
+          i: 1
           o: '0,1,2,3'
           extra:
               r: 4
