@@ -362,7 +362,7 @@ def build_sweep_test(lhCfg):
             sys.exit(2)
 
 
-# test_lockhammer.py [local_yaml_config_file_without_extension]
+# test_lockhammer.py [local_yaml_config_filename]
 if __name__ == "__main__":
     if len(sys.argv) == 2:
         lhConfigFullPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), sys.argv[1])
