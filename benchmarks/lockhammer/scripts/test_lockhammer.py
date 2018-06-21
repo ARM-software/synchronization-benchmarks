@@ -36,6 +36,7 @@
 import sys
 import os
 import sh
+import re
 import errno
 import platform
 import unittest
@@ -50,7 +51,7 @@ import pprint
 # config file should be in the same directory of this script
 LH_CFG = "lh_test_cfg.yaml"
 # lockhammer.c has these parameters
-LH_ARGU_LIST = ['t', 'a', 'c', 'p']
+LH_ARGU_LIST = ['t', 'a', 'c', 'p', 'i', 'o']
 
 
 # python unittest framework container class
@@ -130,6 +131,30 @@ def full_func_name(cmdName, paramList, fillZero):
         fullName += str(random.random())
     return fullName
 
+# convert lstopo output to special cpu core order string, used by sweeptest -o
+def parse_lstopo():
+    result = ''
+    try:
+        lst = sh.Command("lstopo")
+        out = str(sh.grep(lst("--no-io", "--no-cache"), "PU"))
+    except sh.CommandNotFound:
+        print("Error, cannot find lstopo, need to install hwloc package first.")
+        sys.exit(2)
+    else:
+        for line in out.splitlines():
+            match = re.search("P#(\d+)", line.strip())
+            if match:
+                result += (match.group(1) + ',')
+    finally:
+        if result[-1] == ',':
+            result = result[:-1]
+
+    # sample output for single-socket EPYC 7601 server:
+    #0,32,8,40,16,48,24,56,4,36,12,44,20,52,28,60,1,33,9,41,17,49,25,57,5,37,\
+    #13,45,21,53,29,61,2,34,10,42,18,50,26,58,6,38,14,46,22,54,30,62,3,35,11,\
+    #43,19,51,27,59,7,39,15,47,23,55,31,63
+    return result
+
 # convert parameter from {key:value} to string list
 def expand_param(ctrl, valueList):
     outParam = []
@@ -144,6 +169,11 @@ def expand_param(ctrl, valueList):
     elif isinstance(valueList, int):
         if ctrl == 't' and valueList == 0:
             outParam.append(['-t', multiprocessing.cpu_count()])
+        else:
+            outParam.append(['-' + ctrl, valueList])
+    elif isinstance(valueList, str):
+        if ctrl == 'o' and valueList == 'lstopo':
+            outParam.append(['-o', parse_lstopo()])
         else:
             outParam.append(['-' + ctrl, valueList])
     else:
@@ -189,7 +219,10 @@ def prepare_param(arguList):
         for elem in arguList:
             paramList = []
             for key in elem:
-                paramList.extend(['-'+key, elem[key]])
+                if key == 'o' and str(elem[key]) == 'lstopo':
+                    paramList.extend(['-o', parse_lstopo()])
+                else:
+                    paramList.extend(['-'+key, elem[key]])
             arguLL.append(paramList)
     return arguLL
 
