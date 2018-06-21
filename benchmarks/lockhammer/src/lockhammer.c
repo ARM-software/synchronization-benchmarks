@@ -175,10 +175,11 @@ int main(int argc, char** argv)
           case 'o':
             args.pinorder = calloc(num_cores, sizeof(int));
             if (args.pinorder == NULL) {
-                fprintf(stderr, "ERROR: Cannot allocate enough memory for pinorder structure.\n");
+                fprintf(stderr, "ERROR: cannot allocate enough memory for pinorder structure.\n");
                 return 1;
             }
-            csv = strtok(optarg, ",");
+            /* colon is better than comma because lockhammer output uses csv format */
+            csv = strtok(optarg, ":");
             for (int i = 0; i < num_cores && csv != NULL; ++i)
             {
                 optval = strtol(csv, (char **) NULL, 10);
@@ -187,7 +188,7 @@ int main(int argc, char** argv)
                 } else {
                     fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
                 }
-                csv = strtok(NULL, ",");
+                csv = strtok(NULL, ":");
             }
             break;
           case 's':
