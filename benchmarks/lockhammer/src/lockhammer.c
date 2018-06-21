@@ -179,10 +179,15 @@ int main(int argc, char** argv)
                 return 1;
             }
             csv = strtok(optarg, ",");
-            for (int i = 0; i < num_cores && csv != NULL; csv = strtok(NULL, ","), ++i) {
+            for (int i = 0; i < num_cores && csv != NULL; ++i)
+            {
                 optval = strtol(csv, (char **) NULL, 10);
-                if (optval >= 0 && optval < num_cores) *(args.pinorder + i) = optval;
-                else fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
+                if (optval >= 0 && optval < num_cores) {
+                    args.pinorder[i] = optval;
+                } else {
+                    fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
+                }
+                csv = strtok(NULL, ",");
             }
             break;
           case 's':
@@ -382,14 +387,18 @@ void* hmr(void *ptr)
     } else {
         /*
          * Non-zero core value indicates next core to pin, zero value means
-         * fallback to default interleave mode.
+         * fallback to default interleave mode. Note: -o and -i may have
+         * conflicting pinning order that causes two or more threads to pin
+         * on the same core. This feature interaction is intended by design
+         * which allows 0 to serve as don't care mask and only changing the
+         * pinning order we want to change for specific -i interleave mode.
          */
-        if (pinorder && *(pinorder + mycore)) {
-            CPU_SET(*(pinorder + mycore), &affin_mask);
+        if (pinorder && pinorder[mycore]) {
+            CPU_SET(pinorder[mycore], &affin_mask);
             sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
-        } else {
-            /* Calculate affinity mask for my core and set affinity */
-            /* The concept of "interleave" is used here to allow for specifying
+        } else { /* Calculate affinity mask for my core and set affinity */
+            /*
+             * The concept of "interleave" is used here to allow for specifying
              * whether increasing cores counts first populate physical cores or
              * hardware threads within the same physical core. This assumes the
              * following relationship between logical core numbers (N), hardware
