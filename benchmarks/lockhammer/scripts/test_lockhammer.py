@@ -52,7 +52,8 @@ import pprint
 LH_CFG = "lh_test_cfg.yaml"
 # lockhammer.c has these parameters
 LH_ARGU_LIST = ['t', 'a', 'c', 'p', 'i', 'o']
-
+# sh _timeout in seconds, default half an hour
+LH_TMOUT = 1800
 
 # python unittest framework container class
 @unittest.skipUnless(sys.platform.startswith('linux'), "require Linux")
@@ -75,7 +76,7 @@ def write_output(stdOut, logFile, paramList):
 def construct_func(fullCmd, fullArg, logFile):
     def test(self):
         cmdObj = sh.Command(fullCmd)
-        stdOut = str(cmdObj(fullArg))
+        stdOut = str(cmdObj(fullArg, _timeout=LH_TMOUT))
         write_output(stdOut, logFile, [str(datetime.datetime.now()), socket.getfqdn(), fullCmd] + fullArg)
         regEx = "[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*"
         self.assertRegex(stdOut, regEx, "This program has not run to completion.")
