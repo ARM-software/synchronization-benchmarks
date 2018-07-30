@@ -109,6 +109,9 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR: thread count must be positive.\n");
                 return 1;
             }
+            else if (optval == 0) {
+                optval = num_cores;
+            }
             else if (optval <= num_cores) {
                 args.nthrds = optval;
             }
