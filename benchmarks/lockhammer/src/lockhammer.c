@@ -182,9 +182,9 @@ int main(int argc, char** argv)
             for (int i = 0; i < num_cores && csv != NULL; ++i)
             {
                 optval = strtol(csv, (char **) NULL, 10);
-                if (optval >= 0 && optval < num_cores) {
-                    args.pinorder[i] = optval;
-                } else {
+                /* Some Arm systems may have core number larger than total cores number */
+                args.pinorder[i] = optval;
+                if (optval < 0 || optval > num_cores) {
                     fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
                 }
                 csv = strtok(NULL, ",");
