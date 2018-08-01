@@ -1,4 +1,4 @@
-CFLAGS=-g -O2 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include
+override CFLAGS += -g -O3 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include
 
 ifneq ($(DEBUG_LEVEL),)
 ifeq ($(shell test $(DEBUG_LEVEL) -gt 0; echo $$?),0)
