@@ -49,10 +49,11 @@ import pprint
 
 
 # config file should be in the same directory of this script
-LH_CFG = "lh_test_cfg.yaml"
+LH_CFG = "lh_unittest_cfg.yaml"
 # lockhammer.c has these parameters
 LH_ARGU_LIST = ['t', 'a', 'c', 'p', 'i', 'o']
-
+# sh _timeout in seconds, default half an hour
+LH_TMOUT = 1800
 
 # python unittest framework container class
 @unittest.skipUnless(sys.platform.startswith('linux'), "require Linux")
@@ -75,7 +76,7 @@ def write_output(stdOut, logFile, paramList):
 def construct_func(fullCmd, fullArg, logFile):
     def test(self):
         cmdObj = sh.Command(fullCmd)
-        stdOut = str(cmdObj(fullArg))
+        stdOut = str(cmdObj(fullArg, _timeout=LH_TMOUT))
         write_output(stdOut, logFile, [str(datetime.datetime.now()), socket.getfqdn(), fullCmd] + fullArg)
         regEx = "[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*, [0-9]*\.?[0-9]*"
         self.assertRegex(stdOut, regEx, "This program has not run to completion.")
@@ -144,9 +145,9 @@ def parse_lstopo():
         for line in out.splitlines():
             match = re.search("P#(\d+)", line.strip())
             if match:
-                result += (match.group(1) + ',')
+                result += (match.group(1) + ':')
     finally:
-        if result[-1] == ',':
+        if result[-1] == ':':
             result = result[:-1]
 
     # sample output for single-socket EPYC 7601 server:
@@ -272,7 +273,9 @@ def generate_unittest(className, lhCfg, testCfg):
     logFile = default_value(globalCfg, 'logfile', None)
     safeMode = default_value(unitCfg, 'safemode', True)
 
-    prepare_logfile(logFile)
+    if logFile:
+        logFile = socket.gethostname() + '_' + logFile
+        prepare_logfile(logFile)
 
     allCmd = []
     if isinstance(testCfg['cmd'], list):
@@ -326,7 +329,10 @@ def generate_sweeptest(className, lhCfg):
     lhCommand = default_value(sweepCfg, 'cmd', [])
     lhArgument = default_value(sweepCfg, 'argulist', [{}])
 
-    prepare_logfile(logFile)
+    if logFile:
+        logFile = socket.gethostname() + '_' + logFile
+        prepare_logfile(logFile)
+
     sweepList = calc_sweep_list(arguMax, skipSince, skipStep)
     append_arch_cmd(sweepCfg, lhCommand)
 
@@ -357,10 +363,14 @@ def build_sweep_test(lhCfg):
             sys.exit(2)
 
 
-# main function
+# test_lockhammer.py [local_yaml_config_filename]
 if __name__ == "__main__":
-    lhConfig = read_config(os.path.join(os.path.dirname(os.path.abspath(__file__)), LH_CFG))
+    if len(sys.argv) == 2:
+        lhConfigFullPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), sys.argv[1])
+    else:
+        lhConfigFullPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), LH_CFG)
+    lhConfig = read_config(lhConfigFullPath)
     pprint.pprint(lhConfig)
     build_unit_test(lhConfig)
     build_sweep_test(lhConfig)
-    unittest.main(verbosity=2)
+    unittest.main(argv=['first-arg-is-ignored'], verbosity=2)
