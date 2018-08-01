@@ -56,18 +56,17 @@ void* hmr(void *);
 
 void print_usage (char *invoc) {
     fprintf(stderr,
-            "Usage: %s\n\t[-t threads]\n\t[-a acquires per thread]\n\t"
+            "Usage: %s\n\t[-t <#> threads]\n\t[-a <#> acquires per thread]\n\t"
             "[-c <#>[ns | in] critical iterations measured in ns or (in)structions, "
             "if no suffix, assumes instructions]\n\t"
             "[-p <#>[ns | in] parallelizable iterations measured in ns or (in)structions, "
             "if no suffix, assumes (in)structions]\n\t"
-            "[-s safe-mode operation for running as non-root\n\t"
-            "[-i interleave value for thread pinning order, for example, 1 means "
-            "sequential increasing, 2 means pinning hyperthread of the same core first "
-            "before the next core.]\n\t"
-            "[-o arbitrary core pinning order separated by comma without space, command "
-            "lstopo can be used to deduce the correct order.]\n\t"
-            "[-- <test specific arguments>]\n", invoc);
+            "[-s safe-mode operation for running as non-root by reducing priority]\n\t"
+            "[-i <#> interleave value for SMT pinning, e.g. 1: core pinning / no SMT, "
+            "2: 2-way SMT pinning, 4: 4-way SMT pinning, may not work for multisocket]\n\t"
+            "[-o <#:#:#:#> arbitrary pinning order separated by colon without space, "
+            "command lstopo can be used to deduce the correct order]\n\t"
+            "[-- <more workload specific arguments>]\n", invoc);
 }
 
 int main(int argc, char** argv)
@@ -178,10 +177,11 @@ int main(int argc, char** argv)
           case 'o':
             args.pinorder = calloc(num_cores, sizeof(int));
             if (args.pinorder == NULL) {
-                fprintf(stderr, "ERROR: Cannot allocate enough memory for pinorder structure.\n");
+                fprintf(stderr, "ERROR: cannot allocate enough memory for pinorder structure.\n");
                 return 1;
             }
-            csv = strtok(optarg, ",");
+            /* support both comma and colon as delimiter */
+            csv = strtok(optarg, ",:");
             for (int i = 0; i < num_cores && csv != NULL; ++i)
             {
                 optval = strtol(csv, (char **) NULL, 10);
@@ -190,7 +190,7 @@ int main(int argc, char** argv)
                 if (optval < 0 || optval > num_cores) {
                     fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
                 }
-                csv = strtok(NULL, ",");
+                csv = strtok(NULL, ",:");
             }
             break;
           case 's':
