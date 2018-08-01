@@ -177,8 +177,8 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR: cannot allocate enough memory for pinorder structure.\n");
                 return 1;
             }
-            /* colon is better than comma because lockhammer output uses csv format */
-            csv = strtok(optarg, ":");
+            /* support both comma and colon as delimiter */
+            csv = strtok(optarg, ",:");
             for (int i = 0; i < num_cores && csv != NULL; ++i)
             {
                 optval = strtol(csv, (char **) NULL, 10);
@@ -187,7 +187,7 @@ int main(int argc, char** argv)
                 } else {
                     fprintf(stderr, "WARNING: core number %ld is out of range.\n", optval);
                 }
-                csv = strtok(NULL, ":");
+                csv = strtok(NULL, ",:");
             }
             break;
           case 's':
