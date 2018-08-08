@@ -34,7 +34,7 @@ TEST_TARGETS=lh_swap_mutex \
 	lh_jvm_objectmonitor \
 	lh_tbb_spin_rw_mutex \
 	lh_osq_lock \
-    lh_clh_spinlock
+	lh_clh_spinlock
 
 ifeq ($(TARGET_ARCH),aarch64)
 	TEST_TARGETS+=lh_hybrid_spinlock \

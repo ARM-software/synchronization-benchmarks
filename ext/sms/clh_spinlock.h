@@ -120,7 +120,12 @@ static __thread struct clh_node thread_clh_node;
 /* additional parameter to enable WFE(default) or disable WFE */
 static void clh_parse_args(test_args unused, int argc, char** argv) {
     int i = 0;
+#if defined(__aarch64__)
     without_wfe = false;
+#else
+    /* only aarch64 supports WFE */
+    without_wfe = true;
+#endif
 
     /* extended options retrieved after '--' operator */
     while ((i = getopt(argc, argv, "w")) != -1)
@@ -134,7 +139,7 @@ static void clh_parse_args(test_args unused, int argc, char** argv) {
             fprintf(stderr,
                     "clh_spinlock additional options after --:\n"
                     "\t[-h print this msg]\n"
-                    "\t[-w without_wfe, default is false]\n");
+                    "\t[-w without_wfe, aarch64 default is false, non-aarch64 default is true]\n");
             exit(2);
         }
     }
@@ -147,7 +152,8 @@ static inline void clh_lock_init(uint64_t *u64_lock, unsigned long num_cores)
     global_clh_lock.node.wait = 0;
     global_clh_lock.tail = &global_clh_lock.node;
     /* save clh_lock pointer to global u64int_t */
-    *u64_lock = (uint64_t)&global_clh_lock;
+    *u64_lock = (uint64_t)&global_clh_lock;  // unused
+
 #ifdef DDEBUG
     printf("global_clh_lock: %llx\n", (long long unsigned int) &global_clh_lock);
 #endif
@@ -198,7 +204,6 @@ static inline void clh_lock(struct clh_lock *lock, struct clh_node *node, bool u
 /* return the previous node as reused node for the next clh_lock() */
 static inline struct clh_node* clh_unlock(struct clh_node *node)
 {
-    struct clh_node *prev = node->prev;
     /* CLH spinlock: release current node by resetting wait status */
 #ifdef USE_DMB
     __atomic_thread_fence(__ATOMIC_RELEASE);
@@ -209,7 +214,7 @@ static inline struct clh_node* clh_unlock(struct clh_node *node)
 #ifdef DDEBUG
     printf("unlock/node/wait: %llx:%lu\n", (long long unsigned int)node, node->wait);
 #endif
-    return prev;
+    return node->prev;
 }
 
 /* standard lockhammer lock_acquire and lock_release interfaces */
