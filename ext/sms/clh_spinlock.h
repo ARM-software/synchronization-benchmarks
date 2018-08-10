@@ -106,16 +106,37 @@ struct clh_node
     unsigned long wait;
 } __attribute__ ((aligned (CACHE_LINE)));
 
+struct clh_node_pointer
+{
+    struct clh_node *ptr;
+} __attribute__ ((aligned (CACHE_LINE)));
+
 struct clh_lock
 {
     struct clh_node node;
+    unsigned long num_cores;
     struct clh_node *tail __attribute__ ((aligned(CACHE_LINE)));
 };
 
 static bool without_wfe;
-static struct clh_lock global_clh_lock;
-static __thread struct clh_node *clh_node_ptr;
-static __thread struct clh_node thread_clh_node;
+static struct clh_lock global_clh_lock;  // clh lock queue
+/*
+ * Cannot use __thread thread local storage because some threads
+ * may be joined earlier and their node may be referenced by other
+ * threads, this will cause memory access violation. We have to
+ * use the main thread heap and share a common C array. Two arrays
+ * are used here, one is used as a pointer array, which is fixed
+ * for each thread. The other is a nodepool, whose node is assigned
+ * to each thread according to its threadid initially. Then
+ * according to CLH algorithm, current node will reuse its previous
+ * node as the next available node. We just update the fixed pointer
+ * array to reflect this change. That is, each thread will retrieve
+ * its next available node from fixed pointer array by its thread
+ * id offset, but the pointer value may point to any node in the
+ * CLH nodepool.
+ */
+static struct clh_node_pointer *clh_nodeptr;  // clh node pointer array
+static struct clh_node *clh_nodepool;  // clh node struct array
 
 /* additional parameter to enable WFE(default) or disable WFE */
 static void clh_parse_args(test_args unused, int argc, char** argv) {
@@ -150,34 +171,37 @@ static inline void clh_lock_init(uint64_t *u64_lock, unsigned long num_cores)
     /* default tail node should be set to 0 */
     global_clh_lock.node.prev = NULL;
     global_clh_lock.node.wait = 0;
+    global_clh_lock.num_cores = num_cores;
     global_clh_lock.tail = &global_clh_lock.node;
+
     /* save clh_lock pointer to global u64int_t */
-    *u64_lock = (uint64_t)&global_clh_lock;  // unused
+    *u64_lock = (uint64_t)&global_clh_lock;
+
+    /* calloc will initialize all memory to zero automatically */
+    clh_nodeptr = calloc(num_cores, sizeof(struct clh_node_pointer));
+    if (clh_nodeptr == NULL) exit(errno);
+    clh_nodepool = calloc(num_cores, sizeof(struct clh_node));
+    if (clh_nodepool == NULL) exit(errno);
 
 #ifdef DDEBUG
-    printf("global_clh_lock: %llx\n", (long long unsigned int) &global_clh_lock);
+    printf("CLH: global_clh_lock=%llx\n", (long long unsigned int) &global_clh_lock);
 #endif
 }
 
 static inline void clh_thread_local_init(unsigned long smtid)
 {
-    /* each thread has its own local clh_node pointed by clh_node_ptr */
-    thread_clh_node.prev = NULL;
-    thread_clh_node.wait = 0;
-    clh_node_ptr = &thread_clh_node;
-#ifdef DDEBUG
-    printf("thread/clh_node_ptr/thread_clh_node: %lu / %llx / %llx\n", smtid,
-            (long long unsigned int) &clh_node_ptr, (long long unsigned int) &thread_clh_node);
-#endif
+    /* initialize clh node pointer array individually */
+    clh_nodepool[smtid].wait = 1;
+    clh_nodeptr[smtid].ptr = &clh_nodepool[smtid];
 }
 
-static inline void clh_lock(struct clh_lock *lock, struct clh_node *node, bool use_wfe)
+static inline void clh_lock(struct clh_lock *lock, struct clh_node *node, bool use_wfe, unsigned long tid)
 {
     /* must set wait to 1 first, otherwise next node after new tail will not spin */
     node->wait = 1;
     struct clh_node *prev = node->prev = __atomic_exchange_n(&lock->tail, node, __ATOMIC_ACQ_REL);
 #ifdef DDEBUG
-    printf("lock/prev/node: %llx->%llx\n", (long long unsigned int)prev, (long long unsigned int)node);
+    printf("T%lu LOCK: prev<-node: %llx<-%llx\n", tid, (long long unsigned int)prev, (long long unsigned int)node);
 #endif
 
     /* CLH spinlock: spinning on previous node's wait status */
@@ -202,7 +226,7 @@ static inline void clh_lock(struct clh_lock *lock, struct clh_node *node, bool u
 }
 
 /* return the previous node as reused node for the next clh_lock() */
-static inline struct clh_node* clh_unlock(struct clh_node *node)
+static inline struct clh_node* clh_unlock(struct clh_node *node, unsigned long tid)
 {
     /* CLH spinlock: release current node by resetting wait status */
 #ifdef USE_DMB
@@ -212,7 +236,7 @@ static inline struct clh_node* clh_unlock(struct clh_node *node)
     __atomic_store_n(&node->wait, 0, __ATOMIC_RELEASE);
 #endif
 #ifdef DDEBUG
-    printf("unlock/node/wait: %llx:%lu\n", (long long unsigned int)node, node->wait);
+    printf("T%lu UNLOCK: node: %llx\n", tid, (long long unsigned int)node);
 #endif
     return node->prev;
 }
@@ -221,11 +245,11 @@ static inline struct clh_node* clh_unlock(struct clh_node *node)
 static unsigned long __attribute__((noinline))
 lock_acquire (uint64_t *lock, unsigned long threadnum)
 {
-    clh_lock(&global_clh_lock, clh_node_ptr, !without_wfe);
+    clh_lock(&global_clh_lock, clh_nodeptr[threadnum].ptr, !without_wfe, threadnum);
     return 1;
 }
 
 static inline void lock_release (uint64_t *lock, unsigned long threadnum)
 {
-    clh_node_ptr = clh_unlock(clh_node_ptr);
+    clh_nodeptr[threadnum].ptr = clh_unlock(clh_nodeptr[threadnum].ptr, threadnum);
 }
