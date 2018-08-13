@@ -32,6 +32,17 @@
 #ifndef __LOCKHAMMER_H__
 #define __LOCKHAMMER_H__
 
+
+#ifndef initialize_lock
+    #define initialize_lock(lock, thread)
+#endif
+#ifndef parse_test_args
+    #define parse_test_args(args, argc, argv)
+#endif
+#ifndef thread_local_init
+    #define thread_local_init(smtid)
+#endif
+
 enum units { NS,
              INSTS };
 typedef enum units Units;
