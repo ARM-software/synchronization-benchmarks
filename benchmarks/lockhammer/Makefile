@@ -1,4 +1,5 @@
-override CFLAGS += -g -O3 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include
+# override keyword overwrites make command-line option LSE_ENABLE=y, therefore it has been removed
+CFLAGS += -g -O3 -I. -I./include -I../../ext/mysql/include -I../../ext/linux/include -I../../ext/tbb/include -I../../ext/sms/base
 
 ifneq ($(DEBUG_LEVEL),)
 ifeq ($(shell test $(DEBUG_LEVEL) -gt 0; echo $$?),0)
@@ -32,7 +33,8 @@ TEST_TARGETS=lh_swap_mutex \
 	lh_empty \
 	lh_jvm_objectmonitor \
 	lh_tbb_spin_rw_mutex \
-	lh_osq_lock
+	lh_osq_lock \
+	lh_clh_spinlock
 
 ifeq ($(TARGET_ARCH),aarch64)
 	TEST_TARGETS+=lh_hybrid_spinlock \
@@ -57,6 +59,9 @@ lh_hybrid_spinlock_fastdequeue: ../../ext/linux/hybrid_spinlock_fastdequeue.h in
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
 lh_osq_lock: ../../ext/linux/osq_lock.h ../../ext/linux/include/lk_atomics.h ../../ext/linux/include/lk_barrier.h ../../ext/linux/include/lk_cmpxchg.h include/atomics.h src/lockhammer.c
+	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
+
+lh_clh_spinlock: ../../ext/sms/clh_spinlock.h ../../ext/sms/base/build_config.h ../../ext/sms/base/cpu.h ../../ext/sms/base/llsc.h src/lockhammer.c
 	${CC} ${CFLAGS} -DATOMIC_TEST=\"$<\" src/lockhammer.c -o build/$@ ${LDFLAGS}
 
 lh_queued_spinlock: ../../ext/linux/queued_spinlock.h include/atomics.h ../../ext/linux/include/lk_atomics.h src/lockhammer.c

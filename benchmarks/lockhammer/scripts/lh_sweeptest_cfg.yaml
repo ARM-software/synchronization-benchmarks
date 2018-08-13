@@ -66,6 +66,7 @@ sweeptest:
         - lh_swap_mutex
         - lh_tbb_spin_rw_mutex
         - lh_ticket_spinlock
+        - lh_clh_spinlock
     cmd_aarch64: [lh_hybrid_spinlock, lh_hybrid_spinlock_fastdequeue]
     cmd_x86_64:
     repeat: 9
@@ -76,6 +77,10 @@ sweeptest:
     argulist:
         - a: 5000
           c: 0ns
+          p: 0ns
+          o: lstopo
+        - a: 5000
+          c: 200ns
           p: 0ns
           o: lstopo
         - a: 5000
