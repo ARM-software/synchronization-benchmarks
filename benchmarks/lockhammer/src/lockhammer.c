@@ -448,6 +448,8 @@ void* hmr(void *ptr)
         synchronize_threads(&calibrate_lock, nthrds);
     }
 
+    thread_local_init(mycore);
+
 #ifdef DDEBUG
     printf("%ld %ld\n", hold_count, post_count);
 #endif
