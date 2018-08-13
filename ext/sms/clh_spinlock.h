@@ -228,15 +228,15 @@ static inline void clh_lock(struct clh_lock *lock, struct clh_node *node, bool u
 /* return the previous node as reused node for the next clh_lock() */
 static inline struct clh_node* clh_unlock(struct clh_node *node, unsigned long tid)
 {
+#ifdef DDEBUG
+    printf("T%lu UNLOCK: node: %llx\n", tid, (long long unsigned int)node);
+#endif
     /* CLH spinlock: release current node by resetting wait status */
 #ifdef USE_DMB
     __atomic_thread_fence(__ATOMIC_RELEASE);
     __atomic_store_n(&node->wait, 0, __ATOMIC_RELAXED);
 #else
     __atomic_store_n(&node->wait, 0, __ATOMIC_RELEASE);
-#endif
-#ifdef DDEBUG
-    printf("T%lu UNLOCK: node: %llx\n", tid, (long long unsigned int)node);
 #endif
     return node->prev;
 }
