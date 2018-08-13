@@ -226,7 +226,7 @@ static inline void clh_lock(struct clh_lock *lock, struct clh_node *node, bool u
 }
 
 /* return the previous node as reused node for the next clh_lock() */
-static inline struct clh_node* clh_unlock(struct clh_node *node, unsigned long tid)
+static inline void clh_unlock(struct clh_node *node, unsigned long tid)
 {
 #ifdef DDEBUG
     printf("T%lu UNLOCK: node: %llx\n", tid, (long long unsigned int)node);
@@ -238,7 +238,6 @@ static inline struct clh_node* clh_unlock(struct clh_node *node, unsigned long t
 #else
     __atomic_store_n(&node->wait, 0, __ATOMIC_RELEASE);
 #endif
-    return node->prev;
 }
 
 /* standard lockhammer lock_acquire and lock_release interfaces */
@@ -251,5 +250,13 @@ lock_acquire (uint64_t *lock, unsigned long threadnum)
 
 static inline void lock_release (uint64_t *lock, unsigned long threadnum)
 {
-    clh_nodeptr[threadnum].ptr = clh_unlock(clh_nodeptr[threadnum].ptr, threadnum);
+    /*
+     * Have to save prev first, once called clh_unlock(), node->prev might
+     * be overwritten by another thread and caused two thread use the same
+     * nodepool clh_node, therefore generated a circular linked list after
+     * another round of lock acquisition.
+     */
+    struct clh_node* prev = clh_nodeptr[threadnum].ptr->prev;
+    clh_unlock(clh_nodeptr[threadnum].ptr, threadnum);
+    clh_nodeptr[threadnum].ptr = prev;
 }
