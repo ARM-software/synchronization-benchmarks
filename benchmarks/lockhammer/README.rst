@@ -38,13 +38,23 @@ as possible).
 Detailed information about each run is printed to stderr while a CSV summary
 is printed to stdout.
 
+Software Dependencies
+---------------------
+
++ gcc
++ python3
++ sh python3 module
++ yaml python3 module
+
 Usage
 =====
 
 The build system will generate a separate lockhammer binary for each test with
 the format lh_[testname]. Each lockhammer binary accepts the following options:
-        [-t threads]    Number of threads to exercise, default online cores
-        [-a acquires]   Number of acquisitions per thread, default 50000
-        [-c critical]   Critical section in loop iterations, default 0
-        [-p parallel]   Parallelizable section in loop iterations, default 0
-        [-s]            Run in safe mode, default no
+::
+    [-t threads]    Number of threads to exercise, default online cores
+    [-a acquires]   Number of acquisitions per thread, default 50000
+    [-c critical]   Critical section in loop iterations, default 0
+    [-p parallel]   Parallelizable section in loop iterations, default 0
+    [-s]            Run in safe mode with normal priority threads instead of RT_FIFO priority, default no
+
