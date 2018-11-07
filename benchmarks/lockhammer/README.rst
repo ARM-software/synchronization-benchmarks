@@ -58,3 +58,32 @@ the format lh_[testname]. Each lockhammer binary accepts the following options:
     [-p parallel]   Parallelizable section in loop iterations, default 0
     [-s]            Run in safe mode with normal priority threads instead of RT_FIFO priority, default no
 
+
+Plotting
+========
+
+The default plotting script utilizes jupyter-notebook, matplotlib, seaborn
+and pandas under python3 environment. For Ubuntu on x86_64 machine, the
+following packages have to be installed:
+apt install build-essential python3 python3-pip jupyter-notebook
+
+For aarch64 machine, additional packages are also needed:
+apt install pkg-config libfreetype6-dev python3-scipy
+
+Then pip3 can install all plotting related libraries with the following cmd:
+pip3 install matplotlib seaborn pandas numpy
+
+Note, seaborn has to be installed without scipy as dependency on aarch64:
+pip3 install seaborn --no-dependencies
+
+The jupyter-notebook can be started with:
+jupyter-notebook --ip 0.0.0.0 --port=8888
+
+Now any browser should be able to access the jupyter notebook called:
+lockhammer-jupyter-notebook.ipynb
+
+Start a browser, with IP address set to the jupyter server IP and port 8888:
+e.g. http://example.test.com:8888
+
+Click the notebook named lockhammer-jupyter-notebook.ipynb, run each cell one
+by one and jupyter should be able to generate the png graph locally.
