@@ -320,7 +320,7 @@ def generate_sweeptest(className, lhCfg):
 
     execDir = default_value(globalCfg, 'execdir', os.path.join("..", "build"))
     logFile = default_value(globalCfg, 'logfile', None)
-    safeMode = default_value(sweepCfg, 'safemode', False)
+    safeMode = default_value(sweepCfg, 'safemode', True)
     repeatCnt = default_value(sweepCfg, 'repeat', 7)
     sweepArgu = default_value(sweepCfg, 'sweepargu', 't')
     arguMax = default_value(sweepCfg, 'argumax', 0)

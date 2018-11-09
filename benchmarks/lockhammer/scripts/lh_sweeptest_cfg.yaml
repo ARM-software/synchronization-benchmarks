@@ -52,7 +52,7 @@ globalcfg:
 ##
 sweeptest:
     enabled: True
-    safemode: False
+    safemode: True
     cmd:
         - lh_cas_event_mutex
         - lh_cas_lockref
