@@ -100,11 +100,11 @@ static inline void prefetch64 (unsigned long *ptr) {
 }
 
 static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -138,11 +138,11 @@ static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsi
 }
 
 static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -176,11 +176,11 @@ static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned lon
 }
 
 static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -214,11 +214,11 @@ static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned lon
 }
 
 static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -252,13 +252,13 @@ static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long val) {
 }
 
 static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	val = (unsigned long) (-(long) val);
 
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 	val = (unsigned long) (-(long) val);
@@ -293,11 +293,11 @@ static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long val) {
 }
 
 static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("xchgq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -332,12 +332,12 @@ static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
 static inline unsigned long cas64 (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -371,12 +371,12 @@ static inline unsigned long cas64 (unsigned long *ptr, unsigned long val, unsign
 static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -410,12 +410,12 @@ static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val
 static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -449,12 +449,12 @@ static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val
 static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
