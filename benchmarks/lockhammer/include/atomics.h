@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2017, The Linux Foundation. All rights reserved.
  *
  * SPDX-License-Identifier:    BSD-3-Clause
@@ -30,6 +30,7 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef __LH_ATOMICS_H_
 #define __LH_ATOMICS_H_
@@ -130,7 +131,7 @@ static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsi
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_ACQ_REL);
 #endif
 
 	return val;
@@ -168,7 +169,7 @@ static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned lon
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_ACQUIRE);
 #endif
 
 	return val;
@@ -206,7 +207,7 @@ static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned lon
 #endif
 	val = old;
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_RELEASE);
 #endif
 
 	return val;
@@ -244,7 +245,7 @@ static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long val) {
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_RELAXED);
 #endif
 
 	return val;
@@ -285,7 +286,7 @@ static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long val) {
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_sub(ptr, val, __ATOMIC_RELAXED);
 #endif
 
 	return val;
@@ -322,7 +323,7 @@ static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_exchange_n(ptr, val, __ATOMIC_ACQ_REL);
 #endif
 
 	return val;
@@ -360,7 +361,8 @@ static inline unsigned long cas64 (unsigned long *ptr, unsigned long val, unsign
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 #endif
 
 	return old;
@@ -398,7 +400,8 @@ static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE);
 #endif
 
 	return old;
@@ -436,7 +439,8 @@ static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_RELEASE, __ATOMIC_RELEASE);
 #endif
 
 	return old;
@@ -474,7 +478,8 @@ static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned 
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_ACQ_REL, __ATOMIC_ACQ_REL);
 #endif
 
 	return old;
