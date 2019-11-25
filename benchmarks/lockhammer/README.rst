@@ -46,6 +46,26 @@ Software Dependencies
 + sh python3 module
 + yaml python3 module
 
+Guide for Redhat Enterprise Linux 8.1
+-------------------------------------
+dnf install hwloc-gui
+pip3 install sh
+git clone https://github.com/ARM-software/synchronization-benchmarks.git
+cd synchronization-benchmarks/benchmarks/lockhammer
+make
+cd scripts
+./runall.sh
+
+Guide for Ubuntu 19.04
+----------------------
+apt install hwloc python3-sh
+git clone https://github.com/ARM-software/synchronization-benchmarks.git
+cd synchronization-benchmarks/benchmarks/lockhammer
+make
+cd scripts
+./runall.sh
+
+
 Usage
 =====
 
