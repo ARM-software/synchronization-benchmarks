@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2017, The Linux Foundation. All rights reserved.
  *
  * SPDX-License-Identifier:    BSD-3-Clause
@@ -30,6 +30,7 @@
  */
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef __LH_ATOMICS_H_
 #define __LH_ATOMICS_H_
@@ -99,11 +100,11 @@ static inline void prefetch64 (unsigned long *ptr) {
 }
 
 static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -130,18 +131,18 @@ static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsi
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_ACQ_REL);
 #endif
 
 	return val;
 }
 
 static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -168,18 +169,18 @@ static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned lon
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_ACQUIRE);
 #endif
 
 	return val;
 }
 
 static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -206,18 +207,18 @@ static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned lon
 #endif
 	val = old;
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_RELEASE);
 #endif
 
 	return val;
 }
 
 static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -244,20 +245,20 @@ static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long val) {
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_add(ptr, val, __ATOMIC_RELAXED);
 #endif
 
 	return val;
 }
 
 static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	val = (unsigned long) (-(long) val);
 
 	asm volatile ("lock xaddq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 	val = (unsigned long) (-(long) val);
@@ -285,18 +286,18 @@ static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long val) {
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_fetch_sub(ptr, val, __ATOMIC_RELAXED);
 #endif
 
 	return val;
 }
 
 static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("xchgq %q0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	unsigned long old;
 
@@ -322,7 +323,7 @@ static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
 	val = old;
 #endif
 #else
-	/* TODO: builtin atomic call */
+	val = __atomic_exchange_n(ptr, val, __ATOMIC_ACQ_REL);
 #endif
 
 	return val;
@@ -331,12 +332,12 @@ static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
 static inline unsigned long cas64 (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -360,7 +361,8 @@ static inline unsigned long cas64 (unsigned long *ptr, unsigned long val, unsign
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 #endif
 
 	return old;
@@ -369,12 +371,12 @@ static inline unsigned long cas64 (unsigned long *ptr, unsigned long val, unsign
 static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -398,7 +400,8 @@ static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE);
 #endif
 
 	return old;
@@ -407,12 +410,12 @@ static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val
 static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -436,7 +439,8 @@ static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_RELEASE, __ATOMIC_RELEASE);
 #endif
 
 	return old;
@@ -445,12 +449,12 @@ static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val
 static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned long val, unsigned long exp) {
 	unsigned long old;
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
 	asm volatile ("lock cmpxchgq %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
 		      : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #if defined(USE_LSE)
 	asm volatile(
 	"	mov	%[old], %[exp]\n"
@@ -474,7 +478,8 @@ static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned 
 	: );
 #endif
 #else
-	/* TODO: builtin atomic call */
+	old = exp;
+	__atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_ACQ_REL, __ATOMIC_ACQ_REL);
 #endif
 
 	return old;
