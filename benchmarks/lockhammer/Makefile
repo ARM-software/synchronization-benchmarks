@@ -13,6 +13,10 @@ endif
 ifneq ($(LSE_ENABLE),)
 CFLAGS+=-march=armv8-a+lse -DUSE_LSE
 endif
+# Use builtin atomics instead of arch specific, if available
+ifneq ($(USE_BUILTIN),)
+CFLAGS+=-DUSE_BUILTIN
+endif
 
 
 LDFLAGS=-lpthread -lm
