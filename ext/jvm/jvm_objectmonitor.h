@@ -20,6 +20,8 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  *
+ * Portions copyright (c) 2019, ARM Limited and Contributors. All rights
+ * reserved.
  */
 
 #ifndef JVM_OBJECT_MONITOR_H
@@ -120,9 +122,7 @@
 
 inline static void release_store_thread(volatile pthread_t* dest,
         pthread_t val) {
-    READ_MEM_BARRIER;
-    *dest = val;
-    WRITE_MEM_BARRIER;
+    __atomic_store_n(dest, val, __ATOMIC_RELEASE);
 }
 
 inline static void storeload(void) {
