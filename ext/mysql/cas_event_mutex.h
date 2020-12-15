@@ -2,6 +2,7 @@
 
 Copyright (c) 1994, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2017, The Linux Foundation. All rights reserved.
+Copyright (c) 2019, ARM Limited and Contributors. All rights reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -84,7 +85,7 @@ void lock_signal(void)
                uint32_t exResult;
 
                __asm__ __volatile__ ("stxr %w[exResult], %[lockValue],[%[lockAddr]]"
-                                       : [exResult] "=r" (exResult)
+                                       : [exResult] "=&r" (exResult)
                                        : [lockAddr] "r" (lock), [lockValue] "r" (MUTEX_STATE_LOCKED)
                                        :"memory");
 
