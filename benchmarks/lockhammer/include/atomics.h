@@ -494,7 +494,7 @@ void synchronize_threads(uint64_t *barrier, unsigned long nthrds)
     uint64_t tmp_sense = ~global_sense & SENSE_BIT_MASK;
     uint32_t local_sense = (uint32_t)(tmp_sense >> 32);
 
-    uint64_t old_barrier = fetchadd64_acquire(barrier, 2);
+    uint64_t old_barrier = fetchadd64_acquire_release(barrier, 2);
     if (old_barrier == (((nthrds - 1) * 2) | global_sense)) {
         // Make sure the store gets observed by the system. Reset count
         // to zero and flip the sense bit.
