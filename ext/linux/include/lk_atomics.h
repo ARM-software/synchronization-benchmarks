@@ -251,7 +251,9 @@ static inline uint16_t xchg_release16(uint16_t *ptr, uint16_t val) {
 static inline void cpu_relax (void) {
 #if defined(__x86_64__)
 	asm volatile ("pause" : : : "memory" );
-#elif defined (__arch64__)
+#elif defined (__aarch64__) && defined(RELAX_IS_ISB)
+	asm volatile ("isb" : : : "memory" );
+#elif defined (__aarch64__)
 	asm volatile ("yield" : : : "memory" );
 #endif
 }

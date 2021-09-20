@@ -21,10 +21,10 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 #if defined(__x86_64__)
 #define UT_RELAX_CPU() asm volatile ("rep; nop")
-#elif defined(__AARCH64__)
+#elif defined(__aarch64__)
 // Theoretically we could emit a yield here but MySQL doesn't do it
 // and most ARM cores are likely to NOP it anyway
-#define UT_RELAX_CPU() asm volatile ("":::"memory")
+#define UT_RELAX_CPU() asm volatile ("isb":::"memory")
 #else
 #define UT_RELAX_CPU() asm volatile ("":::"memory")
 #endif
