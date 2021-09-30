@@ -116,12 +116,16 @@
  * Using 128 bytes alignment to eliminate false sharing for various Armv8 core
  * cache line size
  */
+
+#define SPIN_NODE_ALIGNMENT 128UL
+#define SPIN_TAIL_ALIGNMENT 128UL
+
 struct optimistic_spin_node {
     struct optimistic_spin_node *next, *prev;
     int locked; /* 1 if lock acquired */
     int cpu; /* encoded CPU # + 1 value */
     int random_sleep; /* random sleep in us */
-} __attribute__ ((aligned (128)));
+} __attribute__ ((aligned (SPIN_NODE_ALIGNMENT)));
 
 struct optimistic_spin_queue {
     /*
@@ -129,7 +133,7 @@ struct optimistic_spin_queue {
      * If the queue is empty, then it's set to OSQ_UNLOCKED_VAL.
      */
     atomic_t tail;
-};
+} __attribute__ ((aligned (SPIN_TAIL_ALIGNMENT)));
 
 /* 0 means thread unlocked, 1~N represents each individual thread on core 1~N */
 #define OSQ_UNLOCKED_VAL (0)
@@ -216,13 +220,23 @@ static void osq_parse_args(test_args unused, int argc, char** argv) {
 static inline void osq_lock_init(uint64_t *lock, unsigned long cores)
 {
     /*
-     * Allocate optimistic_spin_node from heap during main thread initialization.
-     * Each cpu core will have its own spinning node, aligned to 128 bytes maximum
-     * cache line, calloc will set memory to zero automatically, therefore no need
-     * to bzero the nodepool.
+     * Allocate optimistic_spin_node from the heap during main thread
+     * initialization. Each cpu core will have its own spinning node,
+     * aligned to 128 cache line.
      */
-    global_osq_nodepool_ptr = calloc(cores + 1, sizeof(struct optimistic_spin_node));
+
+    size_t size = (cores + 1) * sizeof(struct optimistic_spin_node);
+
+    if (size % SPIN_NODE_ALIGNMENT) {
+	printf("size = %zu, is not a multiple of %zu\n", size, SPIN_NODE_ALIGNMENT);
+	exit(-1);
+    }
+
+    global_osq_nodepool_ptr = aligned_alloc(SPIN_NODE_ALIGNMENT, size);
+
     if (global_osq_nodepool_ptr == NULL) exit(errno);
+
+    memset(global_osq_nodepool_ptr, 0, size);
 
     /*
      * If osq spins more than unqueue_retry times, the spinning cpu may backoff
