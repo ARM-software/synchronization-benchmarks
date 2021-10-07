@@ -223,25 +223,28 @@ __CMPXCHG_CASE( ,  ,  mb_8, dmb ish,  , l, "memory")
 
 #define __LSE_CMPXCHG_CASE(w, sz, name, mb, cl...)                      \
 static inline unsigned long __cmpxchg_case_##name(volatile void *ptr,   \
-                          unsigned long old,                            \
-                          unsigned long new)                            \
+                                                  unsigned long old,    \
+                                                  unsigned long new)    \
 {                                                                       \
     register unsigned long x0 asm ("x0") = (unsigned long)ptr;          \
     register unsigned long x1 asm ("x1") = old;                         \
     register unsigned long x2 asm ("x2") = new;                         \
+    unsigned long tmp;                                                  \
                                                                         \
     asm volatile(                                                       \
     /* LSE atomics */                                                   \
-    "   mov " #w "30, %" #w "[old]\n"                                   \
-    "   cas" #mb #sz "\t" #w "30, %" #w "[new], %[v]\n"                 \
-    "   mov %" #w "[ret], " #w "30"                                     \
-    : [ret] "+r" (x0), [v] "+Q" (*(unsigned long *)ptr)                 \
+    "   mov %" #w "[tmp], %" #w "[old]\n"                               \
+    "   cas" #mb #sz "\t%" #w "[tmp], %" #w "[new], %[v]\n"             \
+    "   mov %" #w "[ret], %" #w "[tmp]"                                 \
+    : [ret] "+r" (x0), [v] "+Q" (*(unsigned long *)ptr),                \
+      [tmp] "=&r" (tmp)                                                 \
     : [old] "r" (x1), [new] "r" (x2)                                    \
     : cl);                                                              \
                                                                         \
     return x0;                                                          \
 }
 
+//                 w sz  name   mb  cl
 __LSE_CMPXCHG_CASE(w, b,     1,   )
 __LSE_CMPXCHG_CASE(w, h,     2,   )
 __LSE_CMPXCHG_CASE(w,  ,     4,   )
