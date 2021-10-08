@@ -84,7 +84,7 @@ void lock_signal(void)
                uint32_t exResult;
 
                __asm__ __volatile__ ("stxr %w[exResult], %[lockValue],[%[lockAddr]]"
-                                       : [exResult] "=r" (exResult)
+                                       : [exResult] "=&r" (exResult)
                                        : [lockAddr] "r" (lock), [lockValue] "r" (MUTEX_STATE_LOCKED)
                                        :"memory");
 
