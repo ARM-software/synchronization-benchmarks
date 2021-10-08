@@ -393,7 +393,10 @@ static bool osq_lock(uint64_t *osq, unsigned long cpu_number)
      * guaranteed their existence -- this allows us to apply
      * cmpxchg in an attempt to undo our queueing.
      */
-
+#if defined(USE_SMP_COND_LOAD_RELAXED)
+    if (smp_cond_load_relaxed(&node->locked, VAL || (++back_off > unqueue_retry)))
+	return true;
+#else
     while (!READ_ONCE(node->locked)) {
         /*
          * TODO: Need to better emulate kernel rescheduling in user space.
@@ -414,6 +417,7 @@ static bool osq_lock(uint64_t *osq, unsigned long cpu_number)
         cpu_relax();
     }
     return true;
+#endif
 
 unqueue:
     /*
