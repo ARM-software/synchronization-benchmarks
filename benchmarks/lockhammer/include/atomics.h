@@ -95,7 +95,7 @@ static inline void prefetch64 (unsigned long *ptr) {
 #if defined(__aarch64__)
 	asm volatile("	prfm	pstl1keep, %[ptr]\n"
 	:
-	: [ptr] "Q" (ptr));
+	: [ptr] "Q" (*(unsigned long *)ptr));
 #endif
 }
 
