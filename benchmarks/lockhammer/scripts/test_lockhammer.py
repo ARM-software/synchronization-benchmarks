@@ -87,7 +87,7 @@ def read_config(lhCfgStr):
     cfg = None
     with open(lhCfgStr, 'r') as fd:
         try:
-            cfg = yaml.load(fd)
+            cfg = yaml.safe_load(fd)
         except yaml.YAMLError as exc:
             print(exc)
     return cfg
