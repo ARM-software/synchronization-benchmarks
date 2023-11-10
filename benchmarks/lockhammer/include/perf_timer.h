@@ -138,7 +138,8 @@ rdtscp_start(void)
             "mov %%edx, %0\n\t"
             "mov %%eax, %1\n\t":
              "=r" (tsc.hi_32),
-             "=r" (tsc.lo_32)::"%rax", "%rbx", "%rcx", "%rdx");
+             "=r" (tsc.lo_32)
+             ::"eax", "ebx", "ecx", "edx");
 
     return tsc.tsc_64;
 }
@@ -164,7 +165,8 @@ rdtscp_end(void)
             "mov %%eax, %1\n\t"
             "CPUID\n\t":
              "=r" (tsc.hi_32),
-             "=r" (tsc.lo_32)::"%rax", "%rbx", "%rcx", "%rdx");
+             "=r" (tsc.lo_32)
+             ::"eax", "ebx", "ecx", "edx");
 
     return tsc.tsc_64;
 
