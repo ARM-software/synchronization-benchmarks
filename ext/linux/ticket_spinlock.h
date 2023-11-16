@@ -46,7 +46,7 @@ asm volatile (
 "4:\n"
 : [lock] "+m" (*lock), [depth] "=m" (depth)
 :
-: "cc" );
+: "cc", "eax", "ecx", "edx", "ax", "cx", "dx" );
 	depth = (((depth >> 16) - (depth & 0xFFFF)) & 0xFFFF) >> 2;
 #elif defined(__aarch64__)
 	unsigned tmp, tmp2, tmp3;
