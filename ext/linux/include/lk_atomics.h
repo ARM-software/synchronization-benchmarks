@@ -358,6 +358,20 @@ do {									\
 	}								\
 	VAL;								\
 })
+
+#define smp_cond_load_relaxed(ptr, cond_expr)				\
+({									\
+	typeof(ptr) __PTR = (ptr);					\
+	typeof(*ptr) VAL;						\
+	for (;;) {							\
+		VAL = READ_ONCE(*__PTR);				\
+		if (cond_expr)						\
+			break;						\
+		__cmpwait_relaxed(__PTR, VAL);				\
+	}								\
+	VAL;								\
+})
+
 #else
 #define __smp_store_release(p, v)					\
 do {									\
@@ -384,6 +398,19 @@ do {									\
 	barrier();						\
 	VAL;							\
 })
+
+#define smp_cond_load_relaxed(ptr, cond_expr) ({		\
+	typeof(ptr) __PTR = (ptr);				\
+	typeof(*ptr) VAL;					\
+	for (;;) {						\
+		VAL = READ_ONCE(*__PTR);			\
+		if (cond_expr)					\
+			break;					\
+		cpu_relax();					\
+	}							\
+	VAL;							\
+})
+
 #endif
 
 #define arch_mcs_spin_lock_contended(l)					\
