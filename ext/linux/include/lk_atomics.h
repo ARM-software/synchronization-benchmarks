@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Based on arch/arm/include/asm/atomic.h
  *
@@ -211,6 +212,73 @@ static inline uint32_t atomic_cmpxchg_relaxed32(uint32_t *ptr, uint32_t exp, uin
 	return old;
 }
 
+static inline int atomic_try_cmpxchg_acquire32(uint32_t *ptr, uint32_t *exp, uint32_t val) {
+	uint32_t tmp = *exp;
+	uint32_t old = atomic_cmpxchg_acquire32(ptr, tmp, val);
+	if (old != tmp) {
+		*exp = old;
+		return 0;
+	} else  {
+		return 1;
+	}
+}
+
+static inline int atomic_try_cmpxchg_relaxed32(uint32_t *ptr, uint32_t *exp, uint32_t val) {
+	uint32_t tmp = *exp;
+	uint32_t old = atomic_cmpxchg_relaxed32(ptr, tmp, val);
+	if (old != tmp) {
+		*exp = old;
+		return 0;
+	} else  {
+		return 1;
+	}
+}
+
+/**
+ * atomic_fetch_or_acquire() - atomic bitwise OR with acquire ordering
+ * @i: int value
+ * @v: pointer to atomic_t
+ *
+ * Atomically updates @v to (@v | @i) with acquire ordering.
+ *
+ * Safe to use in noinstr code; prefer atomic_fetch_or_acquire() elsewhere.
+ *
+ * Return: The original value of @v.
+ */
+static __always_inline uint32_t
+atomic_fetch_or_acquire32(uint32_t i, atomic_t *v)
+{
+#if defined(__x86_64__)
+	uint32_t old_val = v->counter;
+	while(!atomic_try_cmpxchg_acquire32(&v->counter, &old_val, old_val | i));
+	return old_val;
+#elif defined(__aarch64__)
+	uint32_t old_val;
+#if defined(USE_LSE)
+	asm volatile ( \
+	"ldseta %w[_val], %w[_old], %[_loc]\n"
+		: [_old] "=&r" (old_val)
+		: [_loc] "Q" (*(uint32_t *)(&v->counter)), [_val] "r" (i)
+		: "memory");
+#else
+	uint32_t tmp, new_val;
+	asm volatile(
+	"	prfm  pstl1strm, %[_loc]\n"
+	"1:	ldaxr %w[_old], %[_loc]\n"
+	"	orr   %w[_new_val], %w[_old], %w[_val]\n"
+	"	stlxr %w[_tmp], %w[_new_val], %w[_loc]\n"
+	"	cbnz  %w[_tmp], 1b\n"
+	: [_old]"=&r" (old_val), [_new_val] "=&r" (new_val), [_tmp] "=&r" (tmp)
+	: [_loc] "Q" (*(uint32_t *)(&v->counter)), [_val] "r" (i)
+	: "memory");
+#endif
+	return old_val;
+#else
+	#error "Unable to define atomic_fetch_or_acquire"
+#endif
+}
+
+
 static inline uint16_t xchg_release16(uint16_t *ptr, uint16_t val) {
 #if defined(__x86_64__)
 	asm volatile ("xchgw %w0, %1\n"
@@ -354,10 +422,24 @@ do {									\
 		VAL = smp_load_acquire(__PTR);				\
 		if (cond_expr)						\
 			break;						\
-		__cmpwait_relaxed(__PTR, VAL);				\
+		__cmpwait_relaxed(__PTR, (unsigned long) (VAL));	\
 	}								\
 	VAL;								\
 })
+
+#define smp_cond_load_relaxed(ptr, cond_expr)				\
+({									\
+	typeof(ptr) __PTR = (ptr);					\
+	typeof(*ptr) VAL;						\
+	for (;;) {							\
+		VAL = READ_ONCE(*__PTR);				\
+		if (cond_expr)						\
+			break;						\
+		__cmpwait_relaxed(__PTR, (unsigned long) (VAL));	\
+	}								\
+	VAL;								\
+})
+
 #else
 #define __smp_store_release(p, v)					\
 do {									\
@@ -384,6 +466,19 @@ do {									\
 	barrier();						\
 	VAL;							\
 })
+
+#define smp_cond_load_relaxed(ptr, cond_expr) ({		\
+	typeof(ptr) __PTR = (ptr);				\
+	typeof(*ptr) VAL;					\
+	for (;;) {						\
+		VAL = READ_ONCE(*__PTR);			\
+		if (cond_expr)					\
+			break;					\
+		cpu_relax();					\
+	}							\
+	VAL;							\
+})
+
 #endif
 
 #define arch_mcs_spin_lock_contended(l)					\
@@ -398,3 +493,19 @@ do {									\
 #define ATOMIC_INIT(i)  { (i) }
 #define atomic_read(v)                  READ_ONCE((v)->counter)
 #define atomic_set(v, i)                WRITE_ONCE(((v)->counter), (i))
+
+# define likely(x)      __builtin_expect(!!(x), 1)
+# define unlikely(x)    __builtin_expect(!!(x), 0)
+
+#ifndef bool
+#define bool int
+#define true 1
+#define false 0
+#endif
+
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
+#define atomic_cond_read_acquire(v, c) smp_cond_load_acquire(&(v)->counter, (c))
+#define atomic_cond_read_relaxed(v, c) smp_cond_load_relaxed(&(v)->counter, (c))
