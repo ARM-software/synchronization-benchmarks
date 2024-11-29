@@ -66,6 +66,8 @@ void print_usage (char *invoc) {
             "2: 2-way SMT pinning, 4: 4-way SMT pinning, may not work for multisocket]\n\t"
             "[-o <#:#:#:#> arbitrary pinning order separated by colon without space, "
             "command lstopo can be used to deduce the correct order]\n\t"
+            "[-O <#> Run limit timer ticks\n\t"
+            "[-I <#> Run limit inner loop iterations\n\t"
             "[-- <more workload specific arguments>]\n", invoc);
 }
 
@@ -79,6 +81,9 @@ int main(int argc, char** argv)
     unsigned long sched_elapsed = 0, real_elapsed = 0, realcpu_elapsed = 0;
     unsigned long start_ns = 0;
     double avg_lock_depth = 0.0;
+    unsigned long run_limit_ticks = 0;
+    unsigned long run_limit_inner_loop_iters = 10;
+
 
     num_cores = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -93,7 +98,7 @@ int main(int argc, char** argv)
 
     opterr = 0;
 
-    while ((opt = getopt(argc, argv, "t:a:c:p:i:o:s")) != -1)
+    while ((opt = getopt(argc, argv, "t:a:c:p:i:o:sI:O:")) != -1)
     {
         long optval = 0;
         int len = 0;
@@ -196,6 +201,19 @@ int main(int argc, char** argv)
           case 's':
             args.safemode = 1;
             break;
+          case 'O':
+            run_limit_ticks = strtoul(optarg, NULL, 0);
+            {
+                uint32_t cntfrq = timer_get_cnt_freq();
+                double run_limit_seconds = run_limit_ticks / (double) cntfrq;
+                printf("run_limit_ticks = %lu, at %u Hz, should take %f seconds\n", run_limit_ticks, cntfrq, run_limit_seconds);
+            }
+            break;
+          case 'I':
+            run_limit_inner_loop_iters = strtoul(optarg, NULL, 0);
+            printf("run_limit_inner_loop_iters = %lu\n", run_limit_inner_loop_iters);
+            break;
+
           case '?':
           default:
             print_usage(argv[0]);
@@ -260,6 +278,8 @@ int main(int argc, char** argv)
         t_args[i].post_unit = args.nparallel_units;
         t_args[i].tickspns = tickspns;
         t_args[i].pinorder = args.pinorder;
+        t_args[i].run_limit_ticks = run_limit_ticks;
+        t_args[i].run_limit_inner_loop_iters = run_limit_inner_loop_iters;
 
         pthread_create(&hmr_threads[i], &hmr_attr, hmr, (void*)(&t_args[i]));
     }
@@ -357,6 +377,8 @@ void* hmr(void *ptr)
     struct timespec tv_monot_start, tv_monot_end, tv_start, tv_end;
     unsigned long ns_elap, real_ns_elap;
     unsigned long total_depth = 0;
+    unsigned long run_limit_ticks = x->run_limit_ticks;
+    unsigned long run_limit_inner_loop_iters = x->run_limit_inner_loop_iters;
 
     cpu_set_t affin_mask;
 
@@ -454,21 +476,54 @@ void* hmr(void *ptr)
     printf("%ld %ld\n", hold_count, post_count);
 #endif
 
-    clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
+    if (run_limit_ticks) {
 
-    while (!target_locks || nlocks < target_locks) {
-        /* Do a lock thing */
-        prefetch64(lock);
-        total_depth += lock_acquire(lock, mycore);
-        blackhole(hold_count);
-        lock_release(lock, mycore);
-        blackhole(post_count);
+        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
 
-        nlocks++;
+        unsigned long ticks_start = get_raw_counter();
+        unsigned long ticks_end;
+
+        do {
+
+            for (size_t i = 0; i < run_limit_inner_loop_iters; i++) {
+                /* Do a lock thing */
+                prefetch64(lock);
+                total_depth += lock_acquire(lock, mycore);
+                blackhole(hold_count);
+                lock_release(lock, mycore);
+                blackhole(post_count);
+
+                nlocks++;
+            }
+
+            ticks_end = get_raw_counter();
+
+        } while (ticks_end - ticks_start < run_limit_ticks);
+
+        clock_gettime(CLOCK_MONOTONIC, &tv_monot_end);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_end);
+
+    } else {
+
+        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_start);
+
+        while (!target_locks || nlocks < target_locks) {
+            /* Do a lock thing */
+            prefetch64(lock);
+            total_depth += lock_acquire(lock, mycore);
+            blackhole(hold_count);
+            lock_release(lock, mycore);
+            blackhole(post_count);
+
+            nlocks++;
+        }
+
+        clock_gettime(CLOCK_MONOTONIC, &tv_monot_end);
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_end);
+
     }
-    clock_gettime(CLOCK_MONOTONIC, &tv_monot_end);
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &tv_end);
 
     if (mycore == 0)
         *(x->nstart) = (1000000000ul * tv_monot_start.tv_sec + tv_monot_start.tv_nsec);

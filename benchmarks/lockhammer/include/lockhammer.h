@@ -62,6 +62,8 @@ struct thread_args {
     Units hold_unit, post_unit;
     double tickspns;
     int *pinorder;
+    unsigned long run_limit_ticks;
+    unsigned long run_limit_inner_loop_iters;
 };
 typedef struct thread_args thread_args;
 
