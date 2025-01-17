@@ -386,7 +386,6 @@ void* hmr(void *ptr)
 
         /* Wait for all threads to arrive from calibrating. */ 
         synchronize_threads(&calibrate_lock, nthrds);
-        clock_gettime(CLOCK_MONOTONIC, &tv_monot_start);
     } else {
         /*
          * Non-zero core value indicates next core to pin, zero value means
