@@ -35,12 +35,12 @@ static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnu
 	unsigned long val = 1;
 
 	while (val) {
-		val = swap64 (lock, 1);
+		val = swap64 (lock, 1); // uses acquire-release semantics
 	}
 
 	return 0;
 }
 
 static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
-	*(volatile unsigned long *) lock = 0;
+	__atomic_store_n(lock, 0, __ATOMIC_RELEASE);
 }
