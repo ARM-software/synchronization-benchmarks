@@ -22,7 +22,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #undef initialize_lock
 #endif
 
-#define initialize_lock(lock, threads) event_mutex_init(lock, threads)
+#define initialize_lock(lock, pinorder, threads) event_mutex_init(lock, threads)
 
 #include "atomics.h"
 #include "ut_atomics.h"
@@ -66,50 +66,50 @@ void lock_signal(void)
 	*((volatile unsigned long *) &ev_generation) = (version + 1);
 }
 
-	/** Try and acquire the lock using TestAndSet.
-	@return	true if lock succeeded */
-	int tas_lock(uint64_t *lock)
-	{
-	      #if defined(__aarch64__)
+/** Try and acquire the lock using TestAndSet.
+    @return true if lock succeeded */
+int tas_lock(uint64_t *lock)
+{
+#if defined(__aarch64__) && !defined(USE_BUILTIN)
 
-               uint64_t lockValue;
+	uint64_t lockValue;
 
-               __asm__ __volatile__ ("ldaxr %[lockValue],[%[lockAddr]]"
-                                      : [lockValue] "=r" (lockValue)
-                                      : [lockAddr] "r" (lock)
-                                      :"memory");
-               if (lockValue != MUTEX_STATE_UNLOCKED)
-                   return 0;
+	__asm__ __volatile__ ("ldaxr %[lockValue],[%[lockAddr]]"
+			: [lockValue] "=r" (lockValue)
+			: [lockAddr] "r" (lock)
+			: "memory");
+	if (lockValue != MUTEX_STATE_UNLOCKED)
+		return 0;
 
-               uint32_t exResult;
+	uint32_t exResult;
 
-               __asm__ __volatile__ ("stxr %w[exResult], %[lockValue],[%[lockAddr]]"
-                                       : [exResult] "=&r" (exResult)
-                                       : [lockAddr] "r" (lock), [lockValue] "r" (MUTEX_STATE_LOCKED)
-                                       :"memory");
+	__asm__ __volatile__ ("stxr %w[exResult], %[lockValue], [%[lockAddr]]"
+			: [exResult] "=&r" (exResult)
+			: [lockAddr] "r" (lock), [lockValue] "r" ((long) MUTEX_STATE_LOCKED)
+			: "memory");
 
-               return exResult == 0;
-              #else
-                 return(swap64(lock, MUTEX_STATE_LOCKED)
-                         == MUTEX_STATE_UNLOCKED);
-              #endif
-	}
+	return exResult == 0;
+#else
+	return(swap64(lock, MUTEX_STATE_LOCKED)
+			== MUTEX_STATE_UNLOCKED);
+#endif
+}
 
-	/** In theory __sync_lock_release should be used to release the lock.
-	Unfortunately, it does not work properly alone. The workaround is
-	that more conservative __sync_lock_test_and_set is used instead. */
-	void tas_unlock(uint64_t *lock)
-	{
-            #if defined(__aarch64__)
-               __asm__ __volatile__ ("stlr %[lockValue],[%[lockAddr]]"
-                                      :
-                                      : [lockAddr] "r" (lock), [lockValue] "r" (MUTEX_STATE_UNLOCKED)
-                                      :"memory");
-               os_wmb;
-            #else
-               swap64(lock, MUTEX_STATE_UNLOCKED);
-            #endif
-	}
+/** In theory __sync_lock_release should be used to release the lock.
+    Unfortunately, it does not work properly alone. The workaround is
+    that more conservative __sync_lock_test_and_set is used instead. */
+void tas_unlock(uint64_t *lock)
+{
+#if defined(__aarch64__) && !defined(USE_BUILTIN)
+	__asm__ __volatile__ ("stlr %[lockValue],[%[lockAddr]]"
+			:
+			: [lockAddr] "r" (lock), [lockValue] "r" ((long) MUTEX_STATE_UNLOCKED)
+			: "memory");
+	os_wmb;
+#else
+	swap64(lock, MUTEX_STATE_UNLOCKED);
+#endif
+}
 
 
 
@@ -338,3 +338,5 @@ static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnu
 static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 	lock_exit(lock);
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
