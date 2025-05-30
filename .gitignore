@@ -1,0 +1,4 @@
+benchmarks/lockhammer/build/
+benchmarks/lockhammer/build.*/
+benchmarks/lockhammer/*.json
+*.log
