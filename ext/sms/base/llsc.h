@@ -41,7 +41,7 @@ static inline uint32_t ll(uint32_t *var, int mm)
                    : );
     //Barrier after an acquiring load
     if (mm == __ATOMIC_ACQUIRE)
-	dmb();
+        dmb();
     return old;
 }
 #define ll32(a, b) ll((a), (b))
@@ -52,7 +52,7 @@ static inline uint32_t sc(uint32_t *var, uint32_t neu, int mm)
     uint32_t ret;
     //Barrier before a releasing store
     if (mm == __ATOMIC_RELEASE)
-	dmb();
+        dmb();
     __asm volatile("strex %0, %1, [%2]"
                    : "=&r" (ret)
                    : "r" (neu), "r" (var)
@@ -70,7 +70,7 @@ static inline uint64_t lld(uint64_t *var, int mm)
                    : );
     //Barrier after an acquiring load
     if (mm == __ATOMIC_ACQUIRE)
-	dmb();
+        dmb();
     return old;
 }
 #define ll64(a, b) lld((a), (b))
@@ -81,7 +81,7 @@ static inline uint32_t scd(uint64_t *var, uint64_t neu, int mm)
     uint32_t ret;
     //Barrier before a releasing store
     if (mm == __ATOMIC_RELEASE)
-	dmb();
+        dmb();
     __asm volatile("strexd %0, %1, %H1, [%2]"
                    : "=&r" (ret)
                    : "r" (neu), "r" (var)
@@ -108,7 +108,7 @@ static inline uint8_t ll8(uint8_t *var, int mm)
                    : "r" (var)
                    : );
     else
-	abort();
+        abort();
     return old;
 }
 
@@ -126,7 +126,7 @@ static inline uint16_t ll16(uint16_t *var, int mm)
                    : "r" (var)
                    : );
     else
-	abort();
+        abort();
     return old;
 }
 
@@ -144,7 +144,7 @@ static inline uint32_t ll32(uint32_t *var, int mm)
                    : "r" (var)
                    : );
     else
-	abort();
+        abort();
     return old;
 }
 
@@ -163,7 +163,7 @@ static inline uint8_t sc8(uint8_t *var, uint8_t neu, int mm)
                    : "r" (neu), "r" (var)
                    : );
     else
-	abort();
+        abort();
     return ret;
 }
 
@@ -182,7 +182,7 @@ static inline uint32_t sc32(uint32_t *var, uint32_t neu, int mm)
                    : "r" (neu), "r" (var)
                    : );
     else
-	abort();
+        abort();
     return ret;
 }
 
@@ -200,7 +200,7 @@ static inline uint64_t ll(uint64_t *var, int mm)
                    : "r" (var)
                    : );
     else
-	abort();
+        abort();
     return old;
 }
 #define ll64(a, b) ll((a), (b))
@@ -220,7 +220,7 @@ static inline uint32_t sc(uint64_t *var, uint64_t neu, int mm)
                    : "r" (neu), "r" (var)
                    : );
     else
-	abort();
+        abort();
     return ret;
 }
 #define sc64(a, b, c) sc((a), (b), (c))
@@ -248,7 +248,7 @@ static inline __int128 lld(__int128 *var, int mm)
                    : "r" (var)
                    : );
     else
-	abort();
+        abort();
     return old.i128;
 #else
     __int128 old;
@@ -263,7 +263,7 @@ static inline __int128 lld(__int128 *var, int mm)
                    : "r" (var)
                    : );
     else
-	abort();
+        abort();
     return old;
 #endif
 }
@@ -288,7 +288,7 @@ static inline uint32_t scd(__int128 *var, __int128 neu, int mm)
                      "r" (var)
                    : );
     else
-	abort();
+        abort();
     return ret;
 #else
     uint32_t ret;
@@ -303,7 +303,7 @@ static inline uint32_t scd(__int128 *var, __int128 neu, int mm)
                    : "r" (neu), "r" (var)
                    : );
     else
-	abort();
+        abort();
     return ret;
 #endif
 }

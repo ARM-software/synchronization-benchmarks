@@ -34,7 +34,7 @@
  * August 6 2018
  *
  * Description:
- * CLH (Craig Landin Hagersten) spinlock is a queue-based spinlock that each
+ * CLH (Craig, Landin, and Hagersten) spinlock is a queue-based spinlock that each
  * node spins on previous node's wait status. CLH spinlock is starvation-free
  * and has FCFS (first come, first served) order. Because each thread spins
  * on the previous node created by another thread, CLH's performance may be
@@ -95,7 +95,7 @@
 #undef thread_local_init
 #endif
 
-#define initialize_lock(lock, threads) clh_lock_init(lock, threads)
+#define initialize_lock(lock, pinorder, threads) clh_lock_init(lock, threads)
 #define parse_test_args(args, argc, argv) clh_parse_args(args, argc, argv)
 #define thread_local_init(smtid) clh_thread_local_init(smtid)
 
@@ -139,7 +139,7 @@ static struct clh_node_pointer *clh_nodeptr;  // clh node pointer array
 static struct clh_node *clh_nodepool;  // clh node struct array
 
 /* additional parameter to enable WFE(default) or disable WFE */
-static void clh_parse_args(test_args unused, int argc, char** argv) {
+static void clh_parse_args(test_args_t * unused, int argc, char** argv) {
     int i = 0;
 #if defined(__aarch64__)
     without_wfe = false;
@@ -178,8 +178,12 @@ static inline void clh_lock_init(uint64_t *u64_lock, unsigned long num_cores)
     *u64_lock = (uint64_t)&global_clh_lock;
 
     /* calloc will initialize all memory to zero automatically */
+    if (clh_nodeptr) free(clh_nodeptr);
     clh_nodeptr = calloc(num_cores, sizeof(struct clh_node_pointer));
     if (clh_nodeptr == NULL) exit(errno);
+
+
+    if (clh_nodepool) free(clh_nodepool);
     clh_nodepool = calloc(num_cores, sizeof(struct clh_node));
     if (clh_nodepool == NULL) exit(errno);
 
@@ -260,3 +264,5 @@ static inline void lock_release (uint64_t *lock, unsigned long threadnum)
     clh_unlock(clh_nodeptr[threadnum].ptr, threadnum);
     clh_nodeptr[threadnum].ptr = prev;
 }
+
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
