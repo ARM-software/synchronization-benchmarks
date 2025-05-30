@@ -131,7 +131,7 @@
 #undef parse_test_args
 #endif
 
-#define initialize_lock(lock, threads) tbb_init_locks(lock, threads)
+#define initialize_lock(lock, pinorder, threads) tbb_init_locks(lock, threads)
 #define parse_test_args(args, argc, argv) tbb_parse_args(args, argc, argv)
 
 #include "tbb.h"
@@ -176,7 +176,7 @@ void tbb_check_strtoul(int rval, char* endptr) {
     }
 }
 
-void tbb_parse_args(test_args unused, int argc, char** argv) {
+void tbb_parse_args(test_args_t * unused, int argc, char** argv) {
     int i = 0;
     char *endptr;
 
@@ -218,10 +218,13 @@ void tbb_parse_args(test_args unused, int argc, char** argv) {
 void tbb_init_locks (unsigned long *lock, unsigned long cores) {
     unsigned i;
     rw_mask = ((1UL<<log2_ratio)-1);
+    if (rw_counts) { free(rw_counts); }
     rw_counts = (rw_count_t*) malloc(cores * sizeof(rw_count_t));
 
     DBG("On each thread, for every %lu readers there will be 1 writer\n", rw_mask);
     DBG("CPU mask 0x%lx will be readers\n", reader_cpu_mask);
+
+    // XXX: since reader_cpu_mask is unsigned long, this only supports up to 64 CPUs.
 
     for (i=0; i < cores; ++i) {
         rw_counts[i].pure_reader = (reader_cpu_mask & (1UL << i)) ? 1 : 0;
@@ -304,3 +307,5 @@ lock_release (unsigned long *lock, unsigned long threadnum) {
     return;
 }
 #endif /* __TBB_spin_mutex_H */
+
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
