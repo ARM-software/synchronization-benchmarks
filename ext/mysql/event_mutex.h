@@ -22,7 +22,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #undef initialize_lock
 #endif
 
-#define initialize_lock(lock, threads) event_mutex_init(lock, threads)
+#define initialize_lock(lock, pinorder, threads) event_mutex_init(lock, threads)
 
 #include "atomics.h"
 #include "ut_atomics.h"
