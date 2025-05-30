@@ -44,3 +44,5 @@ static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnu
 static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 	__atomic_store_n(lock, 0, __ATOMIC_RELEASE);
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
