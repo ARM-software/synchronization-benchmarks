@@ -19,6 +19,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "cpu_relax.h"
+
 typedef struct {
 	int counter;
 } atomic_t;
@@ -29,8 +31,10 @@ typedef int16_t __s16;
 typedef uint16_t __u16;
 typedef int32_t __s32;
 typedef uint32_t __u32;
+#ifndef _ASM_GENERIC_INT_LL64_H
 typedef int64_t __s64;
 typedef uint64_t __u64;
+#endif
 
 typedef int8_t s8;
 typedef uint8_t u8;
@@ -250,7 +254,7 @@ atomic_fetch_or_acquire32(uint32_t i, atomic_t *v)
 {
 #if defined(__x86_64__)
 	uint32_t old_val = v->counter;
-	while(!atomic_try_cmpxchg_acquire32(&v->counter, &old_val, old_val | i));
+	while(!atomic_try_cmpxchg_acquire32((uint32_t *)&v->counter, &old_val, old_val | i));
 	return old_val;
 #elif defined(__aarch64__)
 	uint32_t old_val;
@@ -263,13 +267,13 @@ atomic_fetch_or_acquire32(uint32_t i, atomic_t *v)
 #else
 	uint32_t tmp, new_val;
 	asm volatile(
-	"	prfm  pstl1strm, %[_loc]\n"
-	"1:	ldaxr %w[_old], %[_loc]\n"
+	"	prfm  pstl1strm, [%[_loc]]\n"
+	"1:	ldaxr %w[_old], [%[_loc]]\n"
 	"	orr   %w[_new_val], %w[_old], %w[_val]\n"
-	"	stlxr %w[_tmp], %w[_new_val], %w[_loc]\n"
+	"	stlxr %w[_tmp], %w[_new_val], [%[_loc]]\n"
 	"	cbnz  %w[_tmp], 1b\n"
 	: [_old]"=&r" (old_val), [_new_val] "=&r" (new_val), [_tmp] "=&r" (tmp)
-	: [_loc] "Q" (*(uint32_t *)(&v->counter)), [_val] "r" (i)
+	: [_loc] "r" (&v->counter), [_val] "r" (i)
 	: "memory");
 #endif
 	return old_val;
@@ -316,15 +320,84 @@ static inline uint16_t xchg_release16(uint16_t *ptr, uint16_t val) {
 	return val;
 }
 
-static inline void cpu_relax (void) {
-#if defined(__x86_64__)
-	asm volatile ("pause" : : : "memory" );
-#elif defined (__aarch64__) && defined(RELAX_IS_ISB)
-	asm volatile ("isb" : : : "memory" );
-#elif defined (__aarch64__)
-	asm volatile ("yield" : : : "memory" );
-#endif
+/* -----------------  */
+
+#if defined(__aarch64__)
+#define __stringify_1(x...)     #x
+#define __stringify(x...)       __stringify_1(x)
+
+#define wfe()              asm volatile("wfe" : : : "memory")
+
+#define isb()              asm volatile("isb" : : : "memory")
+
+/*
+ * Unlike read_cpuid, calls to read_sysreg are never expected to be
+ * optimized away or replaced with synthetic values.
+ */
+#define read_sysreg(r) ({                                       \
+        u64 __val;                                              \
+        asm volatile("mrs %0, " __stringify(r) : "=r" (__val)); \
+        __val;                                                  \
+})
+
+
+
+/*
+ * Ensure that reads of the counter are treated the same as memory reads
+ * for the purposes of ordering by subsequent memory barriers.
+ *
+ * This insanity brought to you by speculative system register reads,
+ * out-of-order memory accesses, sequence locks and Thomas Gleixner.
+ *
+ * http://lists.infradead.org/pipermail/linux-arm-kernel/2019-February/631195.html
+ */
+#define arch_counter_enforce_ordering(val) do {                         \
+        u64 tmp, _val = (val);                                          \
+                                                                        \
+        asm volatile(                                                   \
+        "       eor     %0, %1, %1\n"                                   \
+        "       add     %0, sp, %0\n"                                   \
+        "       ldr     xzr, [%0]"                                      \
+        : "=r" (tmp) : "r" (_val));                                     \
+} while (0)
+
+
+static __always_inline u64 __arch_counter_get_cntvct(void)
+{
+        u64 cnt;
+
+        isb();
+        cnt = read_sysreg(cntvct_el0);
+        arch_counter_enforce_ordering(cnt);
+        return cnt;
 }
+
+
+static inline u64 get_cycles(void) {
+	return __arch_counter_get_cntvct();
+}
+
+#endif
+
+
+/* ------------------- */
+static inline void cpu_relax (void) {
+	__cpu_relax();
+}
+
+
+// ------------------------------
+
+#ifndef CPU_RELAX
+#define CPU_RELAX(x) cpu_relax()
+#endif
+
+#ifndef INCREMENT_COUNTER
+#define INCREMENT_COUNTER(x)
+#endif
+
+
+// -------------------------------
 
 #define barrier() __asm__ __volatile__("" : : :"memory")
 
@@ -436,6 +509,7 @@ do {									\
 		if (cond_expr)						\
 			break;						\
 		__cmpwait_relaxed(__PTR, (unsigned long) (VAL));	\
+		INCREMENT_COUNTER(osq_lock_locked_spins);               \
 	}								\
 	VAL;								\
 })
@@ -474,7 +548,8 @@ do {									\
 		VAL = READ_ONCE(*__PTR);			\
 		if (cond_expr)					\
 			break;					\
-		cpu_relax();					\
+		CPU_RELAX(thread_to_relax[thread_number][0]);   \
+		INCREMENT_COUNTER(osq_lock_locked_spins);       \
 	}							\
 	VAL;							\
 })
@@ -509,3 +584,5 @@ do {									\
 
 #define atomic_cond_read_acquire(v, c) smp_cond_load_acquire(&(v)->counter, (c))
 #define atomic_cond_read_relaxed(v, c) smp_cond_load_relaxed(&(v)->counter, (c))
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab : */
