@@ -19,12 +19,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #define os_rmb __atomic_thread_fence(__ATOMIC_ACQUIRE)
 #define os_wmb __atomic_thread_fence(__ATOMIC_RELEASE)
 
-#if defined(__x86_64__)
-#define UT_RELAX_CPU() asm volatile ("rep; nop")
-#elif defined(__aarch64__)
-// Theoretically we could emit a yield here but MySQL doesn't do it
-// and most ARM cores are likely to NOP it anyway
-#define UT_RELAX_CPU() asm volatile ("isb":::"memory")
-#else
-#define UT_RELAX_CPU() asm volatile ("":::"memory")
-#endif
+#include "cpu_relax.h"
+
+#define UT_RELAX_CPU() __cpu_relax()
