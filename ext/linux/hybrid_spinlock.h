@@ -18,7 +18,7 @@
 #undef initialize_lock
 #endif
 
-#define initialize_lock(lock, threads) mcs_init_locks(lock, threads)
+#define initialize_lock(lock, pinorder, threads) mcs_init_locks(lock, threads)
 
 #include "atomics.h"
 #include "lk_atomics.h"
@@ -49,7 +49,11 @@ struct mcs_spinlock *mcs_pool;
 
 void mcs_init_locks (uint64_t *lock, unsigned long cores)
 {
-	mcs_pool = (struct mcs_spinlock *) malloc(4 * cores * sizeof(struct mcs_spinlock));
+	size_t n = 4 * cores * sizeof(struct mcs_spinlock);
+	if (mcs_pool) { free(mcs_pool); }
+	mcs_pool = (struct mcs_spinlock *) malloc(n);
+	if (! mcs_pool) { fprintf(stderr, "malloc failed in " __FILE__ " %s\n", __func__); exit(-1); }
+	memset(mcs_pool, 0, n);
 }
 
 static inline unsigned ticket_depth (unsigned ticketval)
@@ -93,7 +97,7 @@ unsigned long hybrid_spinlock_slowpath(uint64_t *lock, unsigned long threadnum)
 	unsigned long depth = 0;
 	struct mcs_spinlock *prev, *next, *node;
 
-	u32 new, old, tail, val, ticketval;
+	u32 /* new, */ old, tail, val, ticketval;
 
 	int idx;
 
@@ -124,7 +128,7 @@ unsigned long hybrid_spinlock_slowpath(uint64_t *lock, unsigned long threadnum)
 
 	/* do ticket spin */
 #if defined(__aarch64__)
-	unsigned tmp, tmp2, tmp3;
+	unsigned /* tmp, */ tmp2, tmp3;
 asm volatile (
 "5:	ldaxr	%w[ticket], %[lock]\n"
 "	add	%w[tmp2], %w[ticket], %w[ticket_inc]\n"
@@ -185,7 +189,7 @@ unsigned long __attribute__((noinline)) lock_acquire (uint64_t *lock, unsigned l
 	unsigned enqueue;
 
 #if defined(__aarch64__)
-	unsigned tmp, tmp2, tmp3;
+	unsigned /* tmp, */ tmp2, tmp3;
 asm volatile (
 "1:	ldaxr	%w[ticket], %[lock]\n"
 "	add	%w[tmp2], %w[ticket], %w[ticket_inc]\n"
@@ -215,7 +219,7 @@ asm volatile (
 
 #if defined (__aarch64__)
 asm volatile (
-"	mov	%[enqueue], #1\n"
+"	mov	%w[enqueue], #1\n"
 "	sub	%w[tmp3], %w[ticket], %w[qthresh]\n"
 "	rev16	%w[tmp2], %w[tmp3]\n"
 "	eor	%w[tmp3], %w[tmp2], %w[tmp3]\n"
@@ -286,3 +290,5 @@ asm volatile (
 
 #endif
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab : */
