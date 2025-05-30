@@ -32,7 +32,7 @@
 #undef initialize_lock
 #endif
 
-#define initialize_lock(lock, threads) mcs_init_locks(lock, threads)
+#define initialize_lock(lock, pinorder, threads) mcs_init_locks(lock, threads)
 
 #include "atomics.h"
 #include "lk_atomics.h"
@@ -87,15 +87,20 @@ struct mcs_pool_entry {
 struct mcs_pool_entry *mcs_pool;
 
 void mcs_init_locks (uint64_t *lock, unsigned long cores) {
-	unsigned long i;
-	if (sysconf(_SC_LEVEL1_DCACHE_LINESIZE) != CACHELINE_SIZE) {
-        printf("ERROR: assumed cacheline(%d) differs from sysconf(%ld)\n",
-            CACHELINE_SIZE, sysconf(_SC_LEVEL1_DCACHE_LINESIZE));
-    }
-	mcs_pool = aligned_alloc(CACHELINE_SIZE, cores * sizeof(struct mcs_pool_entry));
-	if (mcs_pool == NULL) {
-		printf("ERROR: couldn't allocate mcs pool\n");
+	if (mcs_pool) {
+		free(mcs_pool);
 	}
+
+	if (sysconf(_SC_LEVEL1_DCACHE_LINESIZE) != CACHELINE_SIZE) {
+		fprintf(stderr, "ERROR: assumed cacheline(%d) differs from sysconf(%ld)\n",
+			CACHELINE_SIZE, sysconf(_SC_LEVEL1_DCACHE_LINESIZE));
+	}
+	size_t len = cores * sizeof(struct mcs_pool_entry);
+	mcs_pool = aligned_alloc(CACHELINE_SIZE, len);
+	if (mcs_pool == NULL) {
+		fprintf(stderr, "ERROR: couldn't allocate mcs pool\n");
+	}
+	memset(mcs_pool, 0, len);	// preallocate
 }
 
 /*
@@ -304,7 +309,7 @@ static __always_inline u32  __pv_wait_head_or_lock(struct qspinlock *lock,
 
 static inline int queued_spin_trylock(struct qspinlock *lock)
 {
-	int val = atomic_read(&lock->val);
+	u32 val = atomic_read(&lock->val);
 
 	if (unlikely(val))
 		return 0;
@@ -336,7 +341,7 @@ static inline int queued_spin_trylock(struct qspinlock *lock)
 void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val, unsigned long threadnum)
 {
 	struct mcs_spinlock *prev, *next, *node;
-	u32 new, old, tail;
+	u32 /* new, */ old, tail;
 	int idx;
 
 	/*
@@ -580,3 +585,5 @@ static inline void lock_release (uint64_t *lock, unsigned long threadnum)
 {
 	smp_store_release((u8 *) lock, 0);
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
