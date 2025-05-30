@@ -33,7 +33,7 @@
 #undef initialize_lock
 #endif
 
-#define initialize_lock(lock, threads) cas_rw_lock_init(lock, threads)
+#define initialize_lock(lock, pinorder, threads) cas_rw_lock_init(lock, threads)
 #define CAS_RW_INIT_VAL 0x20000000
 #define CAS_RW_THRESHOLD 0
 
@@ -66,3 +66,5 @@ static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnu
 static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 	fetchadd64_release(lock, 1);
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
