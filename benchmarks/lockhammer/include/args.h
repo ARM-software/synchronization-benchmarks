@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2025, The Linux Foundation. All rights reserved.
  *
  * SPDX-License-Identifier:    BSD-3-Clause
  *
@@ -29,20 +29,15 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "atomics.h"
+#ifndef ARGS_H
+#define ARGS_H
 
-static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
-	unsigned long val = 1;
+#include "lockhammer.h"
 
-	while (val) {
-		val = swap64 (lock, 1); // uses acquire-release semantics
-	}
+int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t * psysinfo);
+int init_sysinfo(system_info_t * psysinfo);
+void print_test_args(const test_args_t * p);
 
-	return 0;
-}
+#endif
 
-static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
-	__atomic_store_n(lock, 0, __ATOMIC_RELEASE);
-}
-
-/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

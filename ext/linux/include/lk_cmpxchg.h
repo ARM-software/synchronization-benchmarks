@@ -222,22 +222,21 @@ __CMPXCHG_CASE( ,  ,  mb_8, dmb ish,  , l, "memory")
 #undef __CMPXCHG_CASE
 
 #define __LSE_CMPXCHG_CASE(w, sz, name, mb, cl...)                      \
-static inline unsigned long __cmpxchg_case_##name(volatile void *ptr,   \
-                                                  unsigned long old,    \
-                                                  unsigned long new)    \
+static inline unsigned long __lse__cmpxchg_case_##name(volatile void *ptr,   \
+                          unsigned long old,                            \
+                          unsigned long new)                            \
 {                                                                       \
-    register unsigned long x0 asm ("x0") = (unsigned long)ptr;          \
-    register unsigned long x1 asm ("x1") = old;                         \
-    register unsigned long x2 asm ("x2") = new;                         \
-    unsigned long tmp;                                                  \
+    register unsigned long x0 = (unsigned long)ptr;                     \
+    register unsigned long x1 = old;                                    \
+    register unsigned long x2 = new;                                    \
+    register unsigned long xtemp;                                       \
                                                                         \
     asm volatile(                                                       \
     /* LSE atomics */                                                   \
-    "   mov %" #w "[tmp], %" #w "[old]\n"                               \
-    "   cas" #mb #sz "\t%" #w "[tmp], %" #w "[new], %[v]\n"             \
-    "   mov %" #w "[ret], %" #w "[tmp]"                                 \
-    : [ret] "+r" (x0), [v] "+Q" (*(unsigned long *)ptr),                \
-      [tmp] "=&r" (tmp)                                                 \
+    "   mov %" #w "[temp], %" #w "[old]\n"                              \
+    "   cas" #mb #sz "\t%" #w "[temp], %" #w "[new], %[v]\n"            \
+    "   mov %" #w "[ret], %" #w "[temp]"                                \
+    : [ret] "+r" (x0), [v] "+Q" (*(unsigned long *)ptr) , [temp] "=&r" (xtemp) \
     : [old] "r" (x1), [new] "r" (x2)                                    \
     : cl);                                                              \
                                                                         \
@@ -287,13 +286,13 @@ static inline unsigned long __cmpxchg##sfx(volatile void *ptr,          \
 {                                                                       \
     switch (size) {                                                     \
     case 1:                                                             \
-        return __cmpxchg_case##sfx##_1(ptr, (u8)old, new);              \
+        return __lse__cmpxchg_case##sfx##_1(ptr, (u8)old, new);         \
     case 2:                                                             \
-        return __cmpxchg_case##sfx##_2(ptr, (u16)old, new);             \
+        return __lse__cmpxchg_case##sfx##_2(ptr, (u16)old, new);        \
     case 4:                                                             \
-        return __cmpxchg_case##sfx##_4(ptr, old, new);                  \
+        return __lse__cmpxchg_case##sfx##_4(ptr, old, new);             \
     case 8:                                                             \
-        return __cmpxchg_case##sfx##_8(ptr, old, new);                  \
+        return __lse__cmpxchg_case##sfx##_8(ptr, old, new);             \
     }                                                                   \
                                                                         \
     unreachable();                                                      \
@@ -464,3 +463,5 @@ __XCHG_GEN(_mb)
 #endif /* __x86_64__ */
 
 #endif  /* __ASM_CMPXCHG_H */
+
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab : */

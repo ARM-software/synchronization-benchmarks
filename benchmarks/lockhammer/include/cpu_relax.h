@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2025, The Linux Foundation. All rights reserved.
  *
  * SPDX-License-Identifier:    BSD-3-Clause
  *
@@ -29,20 +29,43 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "atomics.h"
+#ifndef CPU_RELAX_H
+#define CPU_RELAX_H
 
-static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
-	unsigned long val = 1;
 
-	while (val) {
-		val = swap64 (lock, 1); // uses acquire-release semantics
-	}
+#ifndef CPU_RELAX_ITERATIONS
+#define CPU_RELAX_ITERATIONS 1
+#endif
 
-	return 0;
+static inline void __cpu_relax(void) {
+    for (unsigned long i = 0; i < CPU_RELAX_ITERATIONS; i++) {
+#ifdef __aarch64__
+#if defined(RELAX_IS_ISB)
+        asm volatile ("isb" : : : "memory" );
+#elif defined(RELAX_IS_NOP)
+        asm volatile ("nop" : : : "memory");
+#elif defined(RELAX_IS_EMPTY)
+        asm volatile ("" : : : "memory");
+#elif defined(RELAX_IS_NOTHING)
+
+#endif
+#endif // __aarch64__
+
+#ifdef __x86_64__
+
+#if defined(RELAX_IS_PAUSE)
+    // RELAX_IS_PAUSE is the implementation for x86 in jdk-9
+    asm volatile ("rep; nop"); // aka pause
+#elif defined(RELAX_IS_EMPTY)
+    asm volatile ("" : : : "memory");
+#elif defined(RELAX_IS_NOTHING)
+
+#endif
+#endif // __x86_64__
+
+    }
 }
 
-static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
-	__atomic_store_n(lock, 0, __ATOMIC_RELEASE);
-}
+#endif // CPU_RELAX_H
 
-/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

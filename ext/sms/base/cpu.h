@@ -8,19 +8,11 @@
 #define CACHE_LINE 128
 #endif
 
+#include "cpu_relax.h"
+
 static inline void doze(void)
 {
-#if defined(__ARM_ARCH)
-    // YIELD hints the CPU to switch to another thread if available
-    // but otherwise executes as a NOP
-    // ISB flushes the pipeline, then restarts. This is guaranteed to stall
-    // the CPU a number of cycles
-    __asm__ volatile("isb" : : : "memory");
-#elif defined(__x86_64__)
-    __asm__ volatile("pause" : : : "memory");
-#else
-#error Please add support for your CPU in cpu.h
-#endif
+    __cpu_relax();
 }
 
 int num_cpus(void);

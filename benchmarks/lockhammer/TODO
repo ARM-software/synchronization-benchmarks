@@ -1,0 +1,60 @@
+
+
+
+Physical address accessing strategy
+- While a specified physical address can be obtained by mmap /dev/mem with
+  CONFIG_STRICT_DEVMEM=n (and nopat on x86), we can not guarantee that memory
+  location is freely available for use.  This may be OK for simulation, but not
+  OK on a real system.
+
+  To get around this problem, find a physical address in a persistent hugepage.
+  This means not transparent hugepages, but HugeTLB pages.  Using a persistent
+  hugepage lets us access a physical memory that also persists after the
+  program ends so that there is repeatability.
+
+  TODO:  check that N=1 hugepages works with multiple NUMA domains (yes it
+         does, but since hugepages are default round-robin distributed ("interleaved")
+         across NUMA domains, N=1 will place only one hugepage in the first NUMA domain.
+         If other domains are to be tested, use --hugepage-physaddr to request the
+         hugepage with that physical address in that NUMA domain.)
+  TODO:  use get_mempolicy() to determine the NUMA domain of a hugepage.
+  TODO:  use fewer hugepages (done)
+  TODO:  add a flag to specify the hugepage physical address, and to try remapping
+         hugepages until it is obtained again. (done)
+  TODO:  use set_mempolicy(MPOL_BIND) to place a hugepage on a node instead of the above.
+  TODO:  respect hugepage size in bytes and in kilobytes by name; it only takes in the abbreviated one right now
+
+
+Update SpinPause() in ext/jvm/jvm_objectmonitor.h
+- The SpinPause() function returns 0.  However, this is only the case
+  in now very old versions of OpenJDK.  Modern versions use pause
+  on 64-bit x86 (amd64) and a parameterized choice of a one or more
+  ISB, or NOP on aarch64.
+
+
+ext/linux/hybrid_spinlock*
+- use the lockhammer lock pointer instead of malloc'ing mcs_pool for better reproducibility
+
+queued_spinlock
+- queued_spinlock uses the lock pointer as well as mcs_pool, so need a way to have both be reproducible.
+
+tbb_spin_rw_mutex
+- instead of doing operations on the state variable, use the test harness lock pointer for better reproducibility
+
+clh_spinlock
+- instead of operating on global_clh_lock, use the test harness lock pointer for better reproducibility
+
+ticket_spinlock
+- Modify so that USE_RELAX is effective
+
+
+cpufreq check:
+- for the intel_pstate driver, warn if no_turbo is set to 0
+
+
+
+
+add a memory update in the critical section
+- optionally store update on the same cacheline as the lock
+- expect a lot of kernel locks to have this
+- optionally store update somewhere else than the lock cache line (GUPS)

@@ -1,0 +1,9 @@
+
+
+naming schema
+
+# cloud instance, should be a symlink to a system cpuorder
+<instance_type>.<cloud_provider>.cpuorder
+
+# system cpuorder
+<cpu_model>.<manufacturer>.cpuorder

@@ -14,7 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Based on Linux 4.13 */
+/* aarch64 version is based on Linux 3.13 */
 
 #include "atomics.h"
 
@@ -109,3 +109,5 @@ asm volatile (
 : );
 #endif
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */

@@ -35,8 +35,7 @@
 
 /* 
  * perf_timer.h
- * Functions to read hardware timers, query timer frequency, and a
- * blackhole function that wastes cpu time (useful for nanosecond waits)
+ * Functions to read hardware timers and query timer frequency.
  * Supports x86 and AArch64 platforms
  *
  * Define DEBUG in makefile or here if you desire debug output,
@@ -67,7 +66,11 @@ extern __thread uint64_t prev_tsc;
    operating frequency.  It may, for example,
    count cycles at the maximum frequency of the
    device, even if the CPU core is running at a
-   lower frequency.
+   lower frequency, or it may count at a frequency
+   unrelated to the operating frequency.  Use
+   the --estimate-hwtimer-frequency flag to measure
+   the frequency and the --hwtimer-frequency flag to
+   override the value detected by the code below.
  */
 #ifdef __x86_64__
 static inline uint64_t __attribute__((always_inline))
@@ -184,7 +187,7 @@ get_raw_counter(void) {
 static inline uint64_t __attribute__((always_inline))
 get_cntvct_el0(void) {
     uint64_t t;
-    asm volatile ("mrs %0, cntvct_el0" : "=r" (t));
+    asm volatile ("ISB; mrs %0, cntvct_el0" : "=r" (t));
     return t;
 }
 
@@ -211,14 +214,14 @@ timer_reset_counter()
 static inline uint64_t __attribute__((always_inline))
 timer_get_counter()
 {
-    /* this returns the cycle counter from a constant-rate timer  */
+    /* this returns the counter value from a constant-rate timer */
 #ifdef __aarch64__
-        uint64_t timer;
-        __asm__ __volatile__ ("isb; mrs %0, cntvct_el0" : "=r" (timer));
+        uint64_t counter_value;
+        __asm__ __volatile__ ("isb; mrs %0, cntvct_el0" : "=r" (counter_value));
 #elif __x86_64__
-    uint64_t timer = rdtscp();    // assume constant_tsc
+    uint64_t counter_value = rdtscp();    // assume constant_tsc
 #endif
-    return timer;
+    return counter_value;
 }
 
 /* Timer read for when at start of timing block
@@ -226,14 +229,14 @@ timer_get_counter()
 static inline uint64_t __attribute__((always_inline))
 timer_get_counter_start()
 {
-    /* this returns the cycle counter from a constant-rate timer  */
+    /* this returns the counter value from a constant-rate timer */
 #ifdef __aarch64__
-        uint64_t timer;
-        __asm__ __volatile__ ("dsb ish; isb; mrs %0, cntvct_el0" : "=r" (timer));
+        uint64_t counter_value;
+        __asm__ __volatile__ ("dsb ish; isb; mrs %0, cntvct_el0" : "=r" (counter_value));
 #elif __x86_64__
-    uint64_t timer = rdtscp_start();    // assume constant_tsc
+    uint64_t counter_value = rdtscp_start();    // assume constant_tsc
 #endif
-    return timer;
+    return counter_value;
 }
 
 
@@ -242,14 +245,14 @@ timer_get_counter_start()
 static inline uint64_t __attribute__((always_inline))
 timer_get_counter_end()
 {
-    /* this returns the cycle counter from a constant-rate timer  */
+    /* this returns the counter value from a constant-rate timer  */
 #ifdef __aarch64__
-        uint64_t timer;
-        __asm__ __volatile__ ("isb; mrs %0, cntvct_el0; isb" : "=r" (timer));
+        uint64_t counter_value;
+        __asm__ __volatile__ ("isb; mrs %0, cntvct_el0; isb" : "=r" (counter_value));
 #elif __x86_64__
-    uint64_t timer = rdtscp_end();    // assume constant_tsc
+    uint64_t counter_value = rdtscp_end();    // assume constant_tsc
 #endif
-    return timer;
+    return counter_value;
 }
 
 static inline void __attribute__((always_inline))
@@ -262,13 +265,30 @@ static inline void __attribute__((always_inline))
 timer_init() {
 }
 
-static inline uint32_t __attribute__((always_inline))
-timer_get_cnt_freq(void)
+static inline uint64_t __attribute__((always_inline))
+timer_get_timer_freq(void)
 {
-    uint32_t cnt_freq;
+    extern unsigned long hwtimer_frequency;
+    if (hwtimer_frequency) { return hwtimer_frequency; }
+
+    uint64_t cnt_freq;
 #ifdef __aarch64__
         __asm__ __volatile__ ("isb; mrs %0, cntfrq_el0" : "=r" (cnt_freq));
 #elif __x86_64__
+    // This code attempts to get the TSC frequency.  The assumption made
+    // is TSC frequency equals the CPUFreq cpuinfo_max_freq attribute
+    // value, which is the maximum operating frequency of the processor.
+    // However, this equality is not always true, and less so in newer CPUs.
+    // Also, the actual TSC frequency may not exactly match any nominal
+    // frequency attribute value provided by CPUFreq, so the chances of
+    // this returning the correct frequency have diminished.
+
+    // If the CPUFreq cpuinfo_max_freq attribute is not available, this code
+    // then tries to quickly measure it.
+
+    // Use --timer-frequency flag to override the frequency value.
+    // Use --estimate-timer-frequency to explicitly measure it.
+
     char buf[100];
     FILE * f = fopen("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "r");
     if (f == NULL) {
@@ -285,7 +305,7 @@ timer_get_cnt_freq(void)
 
         // round down cycles
         uint64_t tmp = (time/iterations);
-        unsigned int len = log10(tmp);
+        unsigned long len = log10(tmp);
         double div = pow(10, len-2);
         return floor(tmp/div)*div;
     }
@@ -308,182 +328,12 @@ timer_get_cnt_freq(void)
 #endif
     return cnt_freq;
 }
-#endif
 
 #define TOKENS_MAX_HIGH    1000000        /* good for ~41500 cntvct cycles */
 #define THRESHOLD    1.05            // if the ratio of cycles to do the total eval loop  to  the sum of the individual
                                      // calls (e.g. due to context switch), rerun
 
-void __attribute__((noinline, optimize("no-unroll-loops"))) blackhole(unsigned long iters) {
-    if (! iters) { return; }
-#ifdef __aarch64__
-    asm volatile (".p2align 4; 1: add %0, %0, -1; cbnz  %0, 1b" : "+r" (iters) : "0" (iters));
-#elif __x86_64__
-    asm volatile (".p2align 4; 1: add $-1, %0; jne 1b" : "+r" (iters) );
-#endif
-}
 
-
-int64_t __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_loop_overhead(const unsigned long NUMTRIES)
-{
-    uint64_t LOOP_TEST_OVERHEAD = 0;
-    int64_t outer_cycles_start, outer_cycles_end;
-    unsigned long i, j;
-    int64_t outer_elapsed_total = 0;
-
-    for (j = 0; j < 1000; j++) {
-        int64_t elapsed_total = 0;
-        outer_cycles_start = timer_get_counter_start();
-        for (i = 0; i < NUMTRIES; i++) {
-
-            uint64_t cycles_start, cycles_end;
-            cycles_start = timer_get_counter_start();
-            cycles_end = timer_get_counter_end();
-
-            int64_t elapsed  = MAX((int64_t)(cycles_end - cycles_start), 0);
-            elapsed_total += elapsed;
-        }
-        outer_cycles_end = timer_get_counter_end();
-        outer_elapsed_total = outer_cycles_end - outer_cycles_start;
-        LOOP_TEST_OVERHEAD += (outer_elapsed_total - elapsed_total);
-    }
-    LOOP_TEST_OVERHEAD = LOOP_TEST_OVERHEAD/j;
-    return LOOP_TEST_OVERHEAD;
-}
-
-
-int64_t evaluate_timer_overhead(void)
-{
-    uint64_t TIMER_OVERHEAD = 0;
-    int64_t outer_cycles_start, outer_cycles_end;
-    outer_cycles_start = timer_get_counter_start();
-    outer_cycles_end = timer_get_counter_end();
-    // Force measurement to 0 if it somehow goes negative
-    int64_t elapsed  = MAX(outer_cycles_end - outer_cycles_start, 0);
-    TIMER_OVERHEAD = elapsed;
-    return TIMER_OVERHEAD;
-}
-
-
-int64_t  __attribute__((noinline, optimize("no-unroll-loops"))) evaluate_blackhole(
-        const unsigned long tokens_mid, const unsigned long NUMTRIES)
-{
-    unsigned long i, j;
-    int64_t outer_cycles_start, outer_cycles_end;
-    int64_t sum_elapsed_total = 0;
-    int64_t avg_elapsed_total = 0;
-    int64_t outer_elapsed_total;
-    int64_t outer_inner_diff;
-    int64_t elapsed_total_diff;
-    double percent;
-
-    int64_t LOOP_TEST_OVERHEAD = evaluate_loop_overhead(NUMTRIES);
-    int64_t TIMER_OVERHEAD = evaluate_timer_overhead();
-
-    for (j = 0; j < NUMTRIES; j++) {
-
-        int64_t elapsed_total = 0;
-
-        outer_cycles_start = timer_get_counter_start();
-        for (i = 0; i < NUMTRIES; i++) {
-
-            uint64_t cycles_start, cycles_end;
-            cycles_start = timer_get_counter_start();
-            blackhole(tokens_mid);
-            cycles_end = timer_get_counter_end();
-
-            uint64_t elapsed  = cycles_end - cycles_start;
-                    // printf("elapsed = %lu\n", elapsed);
-
-            elapsed_total += elapsed;
-        }
-        outer_cycles_end = timer_get_counter_end();
-
-        outer_elapsed_total = outer_cycles_end - outer_cycles_start;
-        outer_inner_diff = abs(outer_elapsed_total - elapsed_total);
-
-        // Force measurements to zero if overhead swamps loop run time, in this
-        // case we can't measure this low of a requested time accurately.
-        sum_elapsed_total += MAX((int64_t)(elapsed_total - TIMER_OVERHEAD*NUMTRIES), 0);
-        avg_elapsed_total = sum_elapsed_total / (j + 1);
-        elapsed_total_diff = abs(avg_elapsed_total - elapsed_total);
-
-#ifdef DDEBUG
-        if (outer_inner_diff > LOOP_TEST_OVERHEAD) {
-            percent = outer_inner_diff / (double) LOOP_TEST_OVERHEAD;
-        } else {
-            percent =  LOOP_TEST_OVERHEAD/ (double) outer_inner_diff;
-        }
-
-        printf("outer_elapsed_total = %lu "
-               "elapsed_total = %lu "
-               "outer_inner_diff = %lu percent_oh = %f percent_loop = %f\n",
-               outer_elapsed_total, elapsed_total, outer_inner_diff, percent,
-               (double) elapsed_total_diff / avg_elapsed_total);
-#endif
-    }
-
-    // returns average duration of NUMTRIES calls to blackhole with tokens_mid
-    long result = avg_elapsed_total;
-    return result;
-}
-
-unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low, unsigned long tokens_high,
-        unsigned long core_id)
-{
-    unsigned long tokens_diff = tokens_high - tokens_low;
-    unsigned long tokens_mid = (tokens_diff / 2) + tokens_low;
-    unsigned long NUMTRIES = 15;
-    unsigned long target_elapsed_total = NUMTRIES * target;
-
-#ifdef DDEBUG
-    printf("target = %lu, target_elapsed_total = %lu, tokens_low = %lu, tokens_high = %lu, "
-           "tokens_diff = %lu, tokens_mid = %lu\n",
-            target, target_elapsed_total, tokens_low, tokens_high, tokens_diff, tokens_mid);
 #endif
 
-    if (tokens_diff == 1) {
-        // the answer is either tokens_low or tokens_high
-
-        unsigned long ret_low = evaluate_blackhole(tokens_low, NUMTRIES);
-        unsigned long ret_high = evaluate_blackhole(tokens_high, NUMTRIES);
-
-#ifdef DEBUG
-    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n",
-            core_id, ret_low, tokens_low, target_elapsed_total);
-    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n",
-            core_id, ret_high, tokens_high, target_elapsed_total);
-#endif
-        long low_diff = abs(ret_low - target_elapsed_total);    
-        long high_diff = abs(ret_high - target_elapsed_total);
-
-        if (low_diff < high_diff) {
-            if (tokens_low >= (TOKENS_MAX_HIGH-1)) {
-                printf("tokens is TOKENS_MAX_HIGH or TOKENS_MAX_HIGH -1.  requested delay is too long or too short.\n");
-            }
-
-            return tokens_low;
-        }
-
-        if (tokens_high >= (TOKENS_MAX_HIGH-1)) {
-            printf("tokens is TOKENS_MAX_HIGH or TOKENS_MAX_HIGH -1.  requested delay is too long or too short.\n");
-        }
-
-        return tokens_high;
-    }
-
-    // Measure if this # of tokens is the proper #.
-    unsigned long t = evaluate_blackhole(tokens_mid, NUMTRIES);
- 
-#ifdef DEBUG
-    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n", core_id, t, tokens_mid, target_elapsed_total);
-#endif
-
-    if (t > target_elapsed_total) {
-        tokens_mid = calibrate_blackhole(target, tokens_low, tokens_mid, core_id);
-    } else if (t < target_elapsed_total) {
-        tokens_mid = calibrate_blackhole(target, tokens_mid, tokens_high, core_id);
-    }
-
-    return tokens_mid;
-}
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

@@ -48,6 +48,7 @@
 #define _GNU_SOURCE
 
 #include "atomics.h"
+#include "cpu_relax.h"
 
 /* Non default configurations */
 // #define USE_LOCAL
@@ -76,11 +77,7 @@
  */
 static inline void machine_pause (int32_t delay) {
     while(delay>0) {
-#if defined(__x86_64__)
-        asm volatile ("pause" : : : "memory" );
-#elif defined(__aarch64__)
-        asm volatile ("yield" : : : "memory" );
-#endif  /* ARCH */
+        __cpu_relax();
         delay--;
     }
 }
@@ -97,9 +94,9 @@ static inline void machine_pause (int32_t delay) {
  * The atomics.h is aware of USE_LSE configuration
  * So no need to do anything here.
  */
-#define __TBB_machine_cmpswp8(P,V,C)        cas64_acquire_release(P,V,C)
-#define __TBB_machine_fetchadd8(P,V)        fetchadd64_acquire_release(P,V)
-#define __TBB_machine_fetchadd8release(P,V) fetchadd64_acquire_release(P,V)
+#define __TBB_machine_cmpswp8(P,V,C)        cas64_acquire_release((unsigned long *) P,V,C)
+#define __TBB_machine_fetchadd8(P,V)        fetchadd64_acquire_release((unsigned long *) P,V)
+#define __TBB_machine_fetchadd8release(P,V) fetchadd64_acquire_release((unsigned long *) P,V)
 
 static inline void __TBB_machine_or(volatile void* operand, uint64_t addend) {
 #if defined(__x86_64__)
@@ -302,3 +299,6 @@ static inline void __TBB_AtomicAND(void* operand, uintptr_t addend) {
 }
 #endif  /* __TBB_AtomicAND */
 #endif  /* __TBB_H */
+
+
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

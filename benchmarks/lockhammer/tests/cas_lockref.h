@@ -30,6 +30,7 @@
  */
 
 #include "atomics.h"
+#include "cpu_relax.h"
 
 static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
 	unsigned long val, old;
@@ -44,7 +45,11 @@ static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnu
 		}
 
 		val = cas64(lock, val, old);
-	} while (val != old);
+		if (val == old) {
+			break;
+		}
+		__cpu_relax();
+	} while (1);
 
 	return val >> 32;
 }
@@ -62,5 +67,11 @@ static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
 		}
 
 		val = cas64(lock, val, old);
-	} while (val != old);
+		if (val == old) {
+			return;
+		}
+		__cpu_relax();
+	} while (1);
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */

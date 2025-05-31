@@ -14,6 +14,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+//
+// NOTE: This file is currently unused
+//
+
+
 #ifdef initialize_lock
 #undef initialize_lock
 #endif
@@ -47,8 +52,13 @@ struct mcs_spinlock {
 
 struct mcs_spinlock *mcs_pool;
 
-void mcs_init_locks (uint64_t *lock, unsigned long cores) {
-	mcs_pool = (struct mcs_spinlock *) malloc(4 * cores * sizeof(struct mcs_spinlock));
+void mcs_init_locks (uint64_t *lock, unsigned long cores)
+{
+	size_t n = 4 * cores * sizeof(struct mcs_spinlock);
+	if (mcs_pool) { free(mcs_pool); }
+	mcs_pool = (struct mcs_spinlock *) malloc(n);
+	if (! mcs_pool) { fprintf(stderr, "malloc failed in " __FILE__ " %s\n", __func__); exit(-1); }
+	memset(mcs_pool, 0, n);
 }
 
 static inline __attribute((pure)) u32 encode_tail(int cpu, int idx)
@@ -282,3 +292,5 @@ asm volatile (
 
 #endif
 }
+
+/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab : */

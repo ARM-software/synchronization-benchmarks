@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2025, The Linux Foundation. All rights reserved.
  *
  * SPDX-License-Identifier:    BSD-3-Clause
  *
@@ -29,20 +30,34 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "atomics.h"
 
-static inline unsigned long lock_acquire (uint64_t *lock, unsigned long threadnum) {
-	unsigned long val = 1;
+#ifndef ALLOC_H
+#define ALLOC_H
 
-	while (val) {
-		val = swap64 (lock, 1); // uses acquire-release semantics
-	}
+enum {
+    HUGEPAGES_NONE,
+    HUGEPAGES_DEFAULT,
+    HUGEPAGES_64K,
+    HUGEPAGES_2M,
+    HUGEPAGES_32M,
+    HUGEPAGES_512M,
+    HUGEPAGES_1G,
+    HUGEPAGES_16G,
+    HUGEPAGES_MAX_ENUM
+};
 
-	return 0;
-}
 
-static inline void lock_release (uint64_t *lock, unsigned long threadnum) {
-	__atomic_store_n(lock, 0, __ATOMIC_RELEASE);
-}
+void * do_hugepage_alloc(int use_hugepages, size_t hugepage_req_physaddr, int verbose);
+void * do_alloc(size_t length, int use_hugepages, size_t nonhuge_alignment, size_t hugepage_req_physaddr, int verbose);
+void print_hugepage_physaddr_and_exit(void * mmap_ret);
 
-/* vim: set tabstop=8 shiftwidth=8 softtabstop=8 noexpandtab: */
+// hugepage flag parameter parsing
+int parse_hugepage_parameter(const char * optarg);
+const char * hugepage_map (int enum_param_value);
+
+// function prototypes used by osq_lock
+uintptr_t get_phys_addr(uintptr_t vaddr);
+
+#endif
+
+/* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
