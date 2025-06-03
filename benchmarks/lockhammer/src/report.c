@@ -52,6 +52,7 @@ extern unsigned long hwtimer_diff[];
 
 extern const char * test_name;
 extern const char * variant_name;
+extern const char * test_type_name;
 
 static char is_earlier_than_range(unsigned long v, thread_args_t * haystack, size_t num_threads) {
     for (size_t i = 0; i < num_threads; i++) {
@@ -108,6 +109,7 @@ typedef struct {
 
     const char * test_name;
     const char * variant_name;
+    const char * test_type_name;
 
     unsigned long meas_number;
     unsigned long test_number;
@@ -405,6 +407,7 @@ void standard_report (pinorder_t * p_pinorder, unsigned long meas_number, unsign
 
     s->test_name = test_name;
     s->variant_name = variant_name;
+    s->test_type_name = test_type_name;
 
     s->nominal_critical = crit->t;
     s->nominal_parallel = par->t;
@@ -670,6 +673,7 @@ static void json_output(test_args_t * args) {
         // test configuration
         JOS(json_result, hostname, hostname);
         S(test_name);
+        S(test_type_name);
         S(variant_name);
         S(meas_number);
         S(test_number);
@@ -742,7 +746,8 @@ void print_summary(test_args_t * args) {
     const size_t num_pinorders = args->num_pinorders;
     const int verbose = args->verbose;
 
-    printf("Finished running test_name=%s variant_name=%s\n", test_name, variant_name);
+    printf("Finished test_name=%s variant_name=%s test_type=%s\n",
+            test_name, variant_name, test_type_name);
 
     if (verbose >= VERBOSE_YES) {
         printf("\n");

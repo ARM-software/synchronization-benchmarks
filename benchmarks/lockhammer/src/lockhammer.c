@@ -160,13 +160,12 @@ static void print_system_info(system_info_t * p) {
 
 extern const char * test_name;
 extern const char * variant_name;
+const char * test_type_name __attribute__((weak)) = "";
 
 
 int main(int argc, char** argv)
 {
     system_info_t sysinfo = {};
-
-    printf("Starting test_name=%s variant_name=%s\n", test_name, variant_name);
 
     // init system info
     init_sysinfo(&sysinfo);
@@ -224,6 +223,9 @@ int main(int argc, char** argv)
 
     // call the test-specific argument parser, if it exists
     measure_setup_parse_test_args(&args, argc, argv);
+
+    printf("Starting test_name=%s variant_name=%s test_type=%s\n",
+            test_name, variant_name, test_type_name);
 
     if (args.verbose >= VERBOSE_MORE) {
         print_system_info(&sysinfo);
