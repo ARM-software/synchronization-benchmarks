@@ -207,6 +207,7 @@ fi
 # If the row begins with #, the metric is omitted.
 read -r -d '' -a KEY_LIST <<'EOF_KEY_LIST'
 test_name
+#test_type_name
 variant_name
 num_threads
 nominal_critical
