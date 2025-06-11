@@ -107,7 +107,7 @@ rdtscp(void)
 
     asm volatile("rdtscp" :
              "=a" (tsc.lo_32),
-             "=d" (tsc.hi_32));
+             "=d" (tsc.hi_32) :: "ecx");
 
     return tsc.tsc_64;
 }
