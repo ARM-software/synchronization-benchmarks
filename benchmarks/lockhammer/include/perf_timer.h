@@ -52,6 +52,7 @@
 #include <string.h>
 #include <unistd.h>    /* for access() */
 #include <math.h>
+#include <sys/time.h>
 
 #include "atomics.h"
 
@@ -107,7 +108,7 @@ rdtscp(void)
 
     asm volatile("rdtscp" :
              "=a" (tsc.lo_32),
-             "=d" (tsc.hi_32));
+             "=d" (tsc.hi_32) :: "ecx");
 
     return tsc.tsc_64;
 }
@@ -265,68 +266,31 @@ static inline void __attribute__((always_inline))
 timer_init() {
 }
 
+// this function should be implemented in one .c file
+unsigned long estimate_hwclock_freq(size_t n, int verbose, struct timeval target_measurement_duration);
+
 static inline uint64_t __attribute__((always_inline))
 timer_get_timer_freq(void)
 {
     extern unsigned long hwtimer_frequency;
     if (hwtimer_frequency) { return hwtimer_frequency; }
 
-    uint64_t cnt_freq;
 #ifdef __aarch64__
-        __asm__ __volatile__ ("isb; mrs %0, cntfrq_el0" : "=r" (cnt_freq));
+    __asm__ __volatile__ ("isb; mrs %0, cntfrq_el0" : "=r" (hwtimer_frequency));
 #elif __x86_64__
-    // This code attempts to get the TSC frequency.  The assumption made
-    // is TSC frequency equals the CPUFreq cpuinfo_max_freq attribute
-    // value, which is the maximum operating frequency of the processor.
-    // However, this equality is not always true, and less so in newer CPUs.
-    // Also, the actual TSC frequency may not exactly match any nominal
-    // frequency attribute value provided by CPUFreq, so the chances of
-    // this returning the correct frequency have diminished.
 
-    // If the CPUFreq cpuinfo_max_freq attribute is not available, this code
-    // then tries to quickly measure it.
+    // This measures the TSC frequency over a 3 durations of 0.1 seconds.
 
     // Use --timer-frequency flag to override the frequency value.
-    // Use --estimate-timer-frequency to explicitly measure it.
+    // Use --estimate-timer-frequency to measure over a longer duration.
 
-    char buf[100];
-    FILE * f = fopen("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "r");
-    if (f == NULL) {
-        printf("Failed to open cpuinfo_max_freq, error %s\n",
-            strerror(errno));
-        uint64_t iterations = 2;
-        uint64_t time = 0;
-        for (uint64_t i = 0; i < iterations; i++) {
-            uint64_t start = rdtscp_start();
-            sleep(1);
-            uint64_t end = rdtscp_end();
-            time += end - start;
-        }
+    const struct timeval measurement_duration = { .tv_sec = 0, .tv_usec = 100000 };
 
-        // round down cycles
-        uint64_t tmp = (time/iterations);
-        unsigned long len = log10(tmp);
-        double div = pow(10, len-2);
-        return floor(tmp/div)*div;
-    }
-    while (! feof(f) && ! ferror(f)) {
-        size_t end = fread(buf, 1, sizeof(buf) - 1, f);
-        buf[end] = 0;
-    }
-    fclose(f);
-
-    /* The ACPI cpufreq driver reports 'base' (aka non-turbo) frequency
-       in cpuinfo_max_freq while the intel_pstate driver reports the
-       turbo frequency. Warn if ACPI cpufreq is not found. */
-    if (access("/sys/devices/system/cpu/cpufreq", F_OK)) {
-        printf("cpuinfo_max_freq is not from ACPI cpufreq driver! TSC frequency is probably turbo frequency.\n");
-    }
-
-    cnt_freq = strtoul(buf, NULL, 0);
-    cnt_freq = ((cnt_freq + 5000) / 10000) * 10000;    /* round to nearest 10000 kHz */
-    cnt_freq *= 1000;    /* convert KHz to Hz */
+    hwtimer_frequency = estimate_hwclock_freq(1, 0, measurement_duration);
+#else
+#error "ERROR: timer_get_timer_freq() is not implemented for this system!"
 #endif
-    return cnt_freq;
+    return hwtimer_frequency;
 }
 
 #define TOKENS_MAX_HIGH    1000000        /* good for ~41500 cntvct cycles */

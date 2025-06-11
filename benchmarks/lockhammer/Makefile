@@ -409,6 +409,39 @@ LOCK_I = $(addprefix $(BUILD_DIR)/,$(addsuffix .i,$(addprefix $(LOCK_BASENAME).,
 
 
 # ---------------------
+# early dependency checking
+
+define no_libjansson_message
+
+
+Jansson (for JSON result output) does not appear to be installed.
+
+To build without JSON output, rerun make with NO_JSON=1, e.g.:
+
+make $(MAKECMDGOALS) NO_JSON=1
+
+Or install Jansson development headers, perhaps using:
+
+sudo apt install libjansson-dev
+
+and then run 'make clean' before trying to rebuild
+endef
+
+# This variable is only for the header existience check.  Modify this and
+# CFLAGS/LDFLAGS if Jansson is installed in another location.
+
+JANSSON_HEADER_FILE=/usr/include/jansson.h
+
+ifneq ($(NO_JSON),1)
+ifeq ($(filter $(ALL_CLEAN_TARGETS),$(MAKECMDGOALS)),)
+ifeq (,$(wildcard $(JANSSON_HEADER_FILE)))
+$(error $(no_libjansson_message))
+endif
+endif
+endif
+
+
+# ---------------------
 # info for debugging make
 
 $(info BUILD_DIR = $(BUILD_DIR))                  # output build-dir
