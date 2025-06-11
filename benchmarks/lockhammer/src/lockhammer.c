@@ -909,11 +909,11 @@ void disable_itimer (void) {
 
 static unsigned long estimate_hwtimer_freq(long cpu_num) {
 
-    unsigned long n = 10;
-    unsigned long hwtimer_start, hwtimer_stop, hwtimer_diff;
-    unsigned long hwtimer_average = 0;
+    const unsigned long n = 10;
+    const struct timeval duration = { .tv_sec = 1, .tv_usec = 0 };
 
-    printf("Estimating HW timer frequency on CPU %ld for %lu iterations\n", cpu_num, n);
+    printf("Estimating HW timer frequency on CPU %ld for %lu iterations of %lu.%06lu seconds each\n",
+            cpu_num, n, duration.tv_sec, duration.tv_usec);
 
     cpu_set_t cpu_mask;
 
@@ -925,30 +925,7 @@ static unsigned long estimate_hwtimer_freq(long cpu_num) {
         exit(-1);
     }
 
-    for (unsigned long i = 0; i < n; i++) {
-
-        struct timeval ts_a, ts_b, ts_diff;
-
-        hwtimer_start = get_raw_counter();
-        gettimeofday(&ts_a, NULL);
-
-        do {
-            gettimeofday(&ts_b, NULL);
-            timersub(&ts_b, &ts_a, &ts_diff);
-        } while (ts_diff.tv_sec < 1);
-
-        hwtimer_stop = get_raw_counter();
-
-        hwtimer_diff = hwtimer_stop - hwtimer_start;
-
-        printf("hwtimer_diff = %lu\n", hwtimer_diff);
-
-        hwtimer_average += hwtimer_diff;
-    }
-
-    hwtimer_average /= (double) n;
-
-    // printf("hwtimer_average = %lu\n", hwtimer_average);
+    unsigned long hwtimer_average = estimate_hwclock_freq(n, 1, duration);
 
     return hwtimer_average;
 }
@@ -1014,6 +991,84 @@ static int get_next_available_cpu (cpu_set_t * p_avail_cpus, int num_cores, int 
 
     return -1;
 }
+
+
+unsigned long estimate_hwclock_freq(size_t n, int verbose, struct timeval target_measurement_duration) {
+
+    unsigned long hwcounter_start, hwcounter_stop, hwcounter_diff;
+    unsigned long hwcounter_average = 0;
+
+    assert(n != 0); // can't handle only 1 sample
+
+    size_t high_i = 0, low_i = 0;
+
+    unsigned long hwcounter_freq_high = 0;
+    unsigned long hwcounter_freq_low = -1;
+
+    for (size_t i = 0; i < n + 2; i++) {
+
+        struct timeval ts_a, ts_b, ts_target, ts_diff;
+
+        do {
+            hwcounter_start = get_raw_counter();
+            gettimeofday(&ts_a, NULL);
+
+            timeradd(&ts_a, &target_measurement_duration, &ts_target);
+
+            do {
+                gettimeofday(&ts_b, NULL);
+                hwcounter_stop = get_raw_counter();
+            } while (timercmp(&ts_b, &ts_target, < ));
+
+
+            timersub(&ts_b, &ts_target, &ts_diff);
+
+            if (0)  // expect 0.000000
+                printf("ts_diff = %lu.%06lu\n", ts_diff.tv_sec, ts_diff.tv_usec);
+
+        } while (ts_diff.tv_sec > 0 || ts_diff.tv_usec > 100);
+
+        hwcounter_diff = hwcounter_stop - hwcounter_start;
+
+        timersub(&ts_b, &ts_a, &ts_diff);
+
+        unsigned long hwcounter_freq =
+                    hwcounter_diff / (ts_diff.tv_sec + ts_diff.tv_usec * 0.000001);
+
+        if (verbose) {
+            printf("sample %zu, hwcounter_diff = %lu, freq = %lu\n",
+                    i, hwcounter_diff, hwcounter_freq);
+        }
+
+        hwcounter_average += hwcounter_freq;
+
+        if (hwcounter_freq > hwcounter_freq_high) {
+            hwcounter_freq_high = hwcounter_freq;
+            high_i = i;
+        }
+
+        if (hwcounter_freq < hwcounter_freq_low) {
+            hwcounter_freq_low = hwcounter_freq;
+            low_i = i;
+        }
+
+    }
+
+    if (verbose) {
+        printf("dropped sample %zu, hwcounter_freq_low = %lu\n", low_i, hwcounter_freq_low);
+        printf("dropped sample %zu, hwcounter_freq_high = %lu\n", high_i, hwcounter_freq_high);
+    }
+
+    hwcounter_average -= hwcounter_freq_low;
+    hwcounter_average -= hwcounter_freq_high;
+
+    hwcounter_average /= (double) n;
+
+    // printf("hwcounter_average = %lu\n", hwcounter_average);
+
+    return hwcounter_average;
+}
+
 
 
 /* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */
