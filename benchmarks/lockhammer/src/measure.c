@@ -53,18 +53,6 @@ unsigned long timespec_to_ns (struct timespec * ts) {
     return 1000000000ULL * ts->tv_sec + ts->tv_nsec;
 }
 
-void dump_mem(void * p, size_t n) {
-    char * pc = (char *) p;
-    printf("n = %zu\n", n);
-    for (size_t i = 0; i < n; i++) {
-            printf("%02X ", 0xFF & pc[i]);
-            if ((i % 16) == 15) {
-                printf("\n");
-            }
-    }
-    printf("\n");
-}
-
 #ifdef __aarch64__
 // The --disable-outline-atomics-lse flag is only relevant to tests built
 // using USE_BUILTIN=1 USE_LSE=0 such that the __atomics intrinsics are
