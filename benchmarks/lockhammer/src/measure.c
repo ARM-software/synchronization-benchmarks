@@ -181,16 +181,13 @@ static void synchronize_threads(uint64_t *barrier, unsigned long num_threads)
 }
 
 
-void NOINLINE blackhole(unsigned long iters) {
+void NOINLINE blackhole(const unsigned long iters) {
     if (! iters) { return; }
+    unsigned long temp;
 #ifdef __aarch64__
-#if __clang__==1
-    asm volatile (".p2align 4; 1: add %0, %0, -1; cbnz  %0, 1b" : "=&r" (iters) : "0" (iters));
-#else
-    asm volatile (".p2align 4; 1: add %0, %0, -1; cbnz  %0, 1b" : "+r" (iters) : "0" (iters));
-#endif
+    asm volatile (".p2align 4; 1: add %0, %0, -1; cbnz  %0, 1b" : "=&r" (temp) : "0" (iters));
 #elif __x86_64__
-    asm volatile (".p2align 4; 1: add $-1, %0; jne 1b" : "+r" (iters) );
+    asm volatile (".p2align 4; 1: add $-1, %0; jne 1b" : "=&r" (temp) : "0" (iters) : "cc");
 #endif
 }
 
