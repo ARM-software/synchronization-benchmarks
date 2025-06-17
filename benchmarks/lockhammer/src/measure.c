@@ -228,6 +228,7 @@ void NOINLINE blackhole(const unsigned long iters) {
 #endif
 }
 
+#ifdef DDEBUG
 int64_t NOINLINE evaluate_loop_overhead(const unsigned long NUMTRIES)
 {
     uint64_t LOOP_TEST_OVERHEAD = 0;
@@ -257,6 +258,7 @@ NO_UNROLL_LOOP
     LOOP_TEST_OVERHEAD = LOOP_TEST_OVERHEAD/j;
     return LOOP_TEST_OVERHEAD;
 }
+#endif
 
 
 int64_t evaluate_timer_overhead(void)
@@ -427,6 +429,7 @@ static double measure_blackhole_duration(unsigned long count, unsigned long hwti
 static void calibrate_timer(thread_args_t *x, unsigned long thread, unsigned long NUMTRIES)
 {
     synchronize_threads(locks.p_calibrate_lock, x->num_threads);
+
     if (x->hold_unit == NS) {
         /* Determine how many timer ticks would happen for this wait time */
         unsigned long hold = (unsigned long)((double)x->hold * x->tickspns);
