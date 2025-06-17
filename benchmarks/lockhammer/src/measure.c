@@ -261,16 +261,12 @@ NO_UNROLL_LOOP
 #endif
 
 
-int64_t evaluate_timer_overhead(void)
+static int64_t evaluate_timer_overhead(void)
 {
-    uint64_t TIMER_OVERHEAD = 0;
-    int64_t outer_cycles_start, outer_cycles_end;
-    outer_cycles_start = timer_get_counter_start();
-    outer_cycles_end = timer_get_counter_end();
+    const int64_t outer_cycles_start = timer_get_counter_start();
+    const int64_t outer_cycles_end = timer_get_counter_end();
     // Force measurement to 0 if it somehow goes negative
-    int64_t elapsed  = MAX(outer_cycles_end - outer_cycles_start, 0);
-    TIMER_OVERHEAD = elapsed;
-    return TIMER_OVERHEAD;
+    return MAX(outer_cycles_end - outer_cycles_start, 0);
 }
 
 
