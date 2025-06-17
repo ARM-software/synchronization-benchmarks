@@ -582,6 +582,18 @@ static void thread_cleanup_routine(cleanup_struct_t * pcs) {
 }
 
 
+void set_cpu_affinity(const unsigned long run_on_this_cpu) {
+    cpu_set_t affin_mask;
+    CPU_ZERO(&affin_mask);
+    CPU_SET(run_on_this_cpu, &affin_mask);
+
+    const int ret = sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
+    if (ret == -1) {
+        fprintf(stderr, "ERROR: sched_setaffinity() returned -1 when trying to run on CPU%lu; it is probably not online.\n", run_on_this_cpu);
+        exit(-1);
+    }
+}
+
 // hmr is called by pthread_create()
 
 void* hmr(void *ptr)
@@ -617,10 +629,6 @@ void* hmr(void *ptr)
 
     per_thread_results_t * presults = &x->results;
 
-    cpu_set_t affin_mask;
-
-    CPU_ZERO(&affin_mask);
-
     // all threads increment the counter part of p_sync_lock
     fetchadd64_acquire(locks.p_sync_lock, 2);
 
@@ -646,14 +654,8 @@ void* hmr(void *ptr)
 
     // set up CPU affinity --------------------------------------------
 
-    CPU_SET(run_on_this_cpu, &affin_mask);
+    set_cpu_affinity(run_on_this_cpu);
     presults->cpu_affined = run_on_this_cpu;
-
-    int ret = sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
-    if (ret == -1) {
-        fprintf(stderr, "ERROR: sched_setaffinity() returned -1 when trying to run on CPU%lu; it is probably not online.\n", run_on_this_cpu);
-        exit(-1);
-    }
 
     // synchronize to calculate blackhole -----------------------------
 
