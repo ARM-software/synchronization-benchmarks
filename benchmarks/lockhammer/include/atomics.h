@@ -36,20 +36,6 @@
 #define __LH_ATOMICS_H_
 
 
-// spin_wait - this is currently unused
-static inline void spin_wait (unsigned long wait_iter) {
-#if defined(__aarch64__)
-    asm volatile (
-            "1: subs  %[wait_iter], %[wait_iter], #1\n"
-            "   bcs 1b"
-            : [wait_iter] "+&r" (wait_iter));
-#else
-    for (int i = 0; i < wait_iter; i++) {
-        asm volatile (";");
-    }
-#endif
-}
-
 // wait64 - wait until the 64-bit lock value equals to val
 static inline void wait64 (unsigned long *lock, unsigned long val) {
 #if defined(__aarch64__)
