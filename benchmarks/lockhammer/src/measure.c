@@ -96,6 +96,43 @@ const char * test_name = stringify(TEST_NAME);
 #endif
 const char * variant_name = stringify(VARIANT_NAME);
 
+// Enable the following ENABLE_CALLSITE_LABEL to apply symbols to the
+// lock_acquire/lock_release callsites in hmr() to help locate them when
+// looking at the disassembly.
+
+#define ENABLE_CALLSITE_LABEL
+
+#ifdef ENABLE_CALLSITE_LABEL
+// unique_callsite_symbol makes a unique symbol so that there are no duplicate
+// symbols if the callsite is unrolled into multiple callsites.
+
+// llvm-as can not call assembly macros from outside the asm() statement
+// where it is used, so define and purge the macro on each call.
+
+#define UCS_MACRO \
+    ".altmacro\n"                                    \
+    ".macro unique_callsite_symbol stem,c\n"         \
+    ".ifdef \\stem\\c\n"                             \
+    "    unique_callsite_symbol \\stem %(\\c+1)\n"   \
+    ".else\n"                                        \
+    "\\stem\\c\\():\n"                               \
+    ".endif\n"                                       \
+    ".endm\n"
+
+#define PURGE_UCS_MACRO \
+    "\n"                                             \
+    ".purgem unique_callsite_symbol"
+
+#define CALLSITE_LABEL(x) \
+    asm volatile (                                   \
+        UCS_MACRO                                    \
+        "unique_callsite_symbol "stringify(x)        \
+        PURGE_UCS_MACRO                              \
+    )
+
+#else
+#define CALLSITE_LABEL(x)
+#endif
 
 
 #include ATOMIC_TEST
@@ -684,8 +721,10 @@ void* hmr(void *ptr)
                 // its own osq in a separate cacheline, so this prefetch is redundant
                 prefetch64(lock);
 #endif
+                CALLSITE_LABEL(lock_acquire_timed);
                 total_depth += lock_acquire(lock, thread);
                 blackhole(hold_count);
+                CALLSITE_LABEL(lock_release_timed);
                 lock_release(lock, thread);
                 blackhole(post_count);
                 lock_acquires++;
@@ -731,8 +770,10 @@ void* hmr(void *ptr)
 #ifndef __LINUX_OSQ_LOCK_H      // osq_lock does not use the lock pointer, and these prefetches of it are redundant
             prefetch64(lock);
 #endif
+            CALLSITE_LABEL(lock_acquire_counted);
             total_depth += lock_acquire(lock, thread);
             blackhole(hold_count);
+            CALLSITE_LABEL(lock_release_counted);
             lock_release(lock, thread);
             blackhole(post_count);
 
