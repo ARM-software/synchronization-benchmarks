@@ -177,7 +177,7 @@ typedef struct {
 } locks_t;
 
 // calibrate_blackhole -- (used in osq_lock)
-unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low, unsigned long tokens_high, unsigned long core_id, unsigned long NUMTRIES);
+unsigned long calibrate_blackhole(const unsigned long target, const unsigned long tokens_low, const unsigned long tokens_high, const unsigned long thread, const unsigned long NUMTRIES, const int verbose);
 
 // evaluate_blackhole -- returns average duration of NUMTRIES
 int64_t evaluate_blackhole( const unsigned long tokens_mid, const unsigned long NUMTRIES);

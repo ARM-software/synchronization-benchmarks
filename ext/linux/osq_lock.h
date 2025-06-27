@@ -611,7 +611,7 @@ static inline void osq_lock_init(unsigned long * p_test_lock, int * pinorder, un
 
 static void osq_lock_compute_blackhole_interval(unsigned long thread_number, double tickspns, unsigned long run_on_this_cpu, unsigned long numtries) {
     unsigned long sleep_us = global_osq_nodepool_ptr[thread_number].sleep_us;
-    unsigned long sleep_blackhole = sleep_us ? calibrate_blackhole(tickspns * sleep_us * 1000, 0, TOKENS_MAX_HIGH, thread_number, numtries) : 0;
+    unsigned long sleep_blackhole = sleep_us ? calibrate_blackhole(tickspns * sleep_us * 1000, 0, TOKENS_MAX_HIGH, thread_number, numtries, osq_lock_parameters.verbose) : 0;
 
     global_osq_nodepool_ptr[thread_number].sleep_blackhole = sleep_blackhole;
 
