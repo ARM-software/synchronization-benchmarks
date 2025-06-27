@@ -134,7 +134,7 @@ const char * variant_name = stringify(VARIANT_NAME);
 #define CALLSITE_LABEL(x)
 #endif
 
-
+// IMPORTANT: the test-specific lock routine code is inserted by this #include
 #include ATOMIC_TEST
 
 #ifndef initialize_lock
@@ -168,7 +168,7 @@ void measure_setup_parse_test_args (test_args_t * p_test_args, int argc, char **
 }
 
 
-/* Simple linear barrier routine for synchronizing threads */
+// Simple linear barrier routine for synchronizing threads
 static void synchronize_threads(uint64_t *barrier, unsigned long num_threads)
 {
     // This works by using the barrier's bits 31..1 as a counter of the number
@@ -232,31 +232,27 @@ void NOINLINE blackhole(const unsigned long iters) {
 int64_t NOINLINE evaluate_loop_overhead(const unsigned long NUMTRIES)
 {
     uint64_t LOOP_TEST_OVERHEAD = 0;
-    int64_t outer_cycles_start, outer_cycles_end;
-    unsigned long i, j;
-    int64_t outer_elapsed_total = 0;
+    const size_t outer_loop_iterations = 1000;
 
 NO_UNROLL_LOOP
-    for (j = 0; j < 1000; j++) {
+    for (size_t j = 0; j < outer_loop_iterations; j++) {
         int64_t elapsed_total = 0;
-        outer_cycles_start = timer_get_counter_start();
+        int64_t outer_cycles_start = timer_get_counter_start();
 
-        for (i = 0; i < NUMTRIES; i++) {
-            uint64_t cycles_start, cycles_end;
-            cycles_start = timer_get_counter_start();
-            cycles_end = timer_get_counter_end();
+        for (size_t i = 0; i < NUMTRIES; i++) {
+            uint64_t cycles_start = timer_get_counter_start();
+            uint64_t cycles_end = timer_get_counter_end();
 
-            int64_t elapsed  = MAX((int64_t)(cycles_end - cycles_start), 0);
+            int64_t elapsed = MAX((int64_t)(cycles_end - cycles_start), 0);
             elapsed_total += elapsed;
         }
 
-        outer_cycles_end = timer_get_counter_end();
-        outer_elapsed_total = outer_cycles_end - outer_cycles_start;
+        int64_t outer_cycles_end = timer_get_counter_end();
+        int64_t outer_elapsed_total = outer_cycles_end - outer_cycles_start;
         LOOP_TEST_OVERHEAD += (outer_elapsed_total - elapsed_total);
     }
 
-    LOOP_TEST_OVERHEAD = LOOP_TEST_OVERHEAD/j;
-    return LOOP_TEST_OVERHEAD;
+    return LOOP_TEST_OVERHEAD / outer_loop_iterations;
 }
 #endif
 
@@ -270,50 +266,37 @@ static int64_t evaluate_timer_overhead(void)
 }
 
 
+// evaluate_blackhole: average duration in timer ticks for blackhole() called NUMTRIES times
+// This is not the duration of a single blackhole() call, it's that of NUMTRIES * blackhole().
 int64_t NOINLINE evaluate_blackhole(
         const unsigned long tokens_mid, const unsigned long NUMTRIES)
 {
-    unsigned long i, j;
     int64_t sum_elapsed_total = 0;
     int64_t avg_elapsed_total = 0;
+    const int64_t TIMER_OVERHEAD = evaluate_timer_overhead();
 #ifdef DDEBUG
-    int64_t outer_cycles_start, outer_cycles_end;
-    int64_t outer_elapsed_total;
-    int64_t outer_inner_diff;
-    int64_t elapsed_total_diff;
-    double percent;
-    int64_t LOOP_TEST_OVERHEAD = evaluate_loop_overhead(NUMTRIES);
+    const int64_t LOOP_TEST_OVERHEAD = evaluate_loop_overhead(NUMTRIES);
 #endif
-    int64_t TIMER_OVERHEAD = evaluate_timer_overhead();
 
 NO_UNROLL_LOOP
-    for (j = 0; j < NUMTRIES; j++) {
-
+    for (size_t j = 0; j < NUMTRIES; j++) {
         int64_t elapsed_total = 0;
-
 #ifdef DDEBUG
-        outer_cycles_start = timer_get_counter_start();
+        int64_t outer_cycles_start = timer_get_counter_start();
 #endif
+
 NO_UNROLL_LOOP
-        for (i = 0; i < NUMTRIES; i++) {
-
-            uint64_t cycles_start, cycles_end;
-            cycles_start = timer_get_counter_start();
+        for (size_t i = 0; i < NUMTRIES; i++) {
+            const uint64_t cycles_start = timer_get_counter_start();
             blackhole(tokens_mid);
-            cycles_end = timer_get_counter_end();
-
-            uint64_t elapsed  = cycles_end - cycles_start;
-                    // printf("elapsed = %lu\n", elapsed);
-
-            elapsed_total += elapsed;
+            const uint64_t cycles_end = timer_get_counter_end();
+            elapsed_total += cycles_end - cycles_start;
         }
-#ifdef DDEBUG
-        outer_cycles_end = timer_get_counter_end();
-#endif
 
 #ifdef DDEBUG
-        outer_elapsed_total = outer_cycles_end - outer_cycles_start;
-        outer_inner_diff = abs(outer_elapsed_total - elapsed_total);
+        const int64_t outer_cycles_end = timer_get_counter_end();
+        const int64_t outer_elapsed_total = outer_cycles_end - outer_cycles_start;
+        const int64_t outer_inner_diff = abs(outer_elapsed_total - elapsed_total);
 #endif
 
         // Force measurements to zero if overhead swamps loop run time, in this
@@ -322,11 +305,13 @@ NO_UNROLL_LOOP
         avg_elapsed_total = sum_elapsed_total / (j + 1);
 
 #ifdef DDEBUG
-        elapsed_total_diff = abs(avg_elapsed_total - elapsed_total);
+        double percent;
+        const int64_t elapsed_total_diff = abs(avg_elapsed_total - elapsed_total);
+
         if (outer_inner_diff > LOOP_TEST_OVERHEAD) {
             percent = outer_inner_diff / (double) LOOP_TEST_OVERHEAD;
         } else {
-            percent = LOOP_TEST_OVERHEAD/ (double) outer_inner_diff;
+            percent = LOOP_TEST_OVERHEAD / (double) outer_inner_diff;
         }
 
         printf("outer_elapsed_total = %lu "
@@ -337,69 +322,134 @@ NO_UNROLL_LOOP
 #endif
     }
 
-    // returns average duration of NUMTRIES calls to blackhole with tokens_mid
-    long result = avg_elapsed_total;
-    return result;
+    return avg_elapsed_total;
 }
 
-unsigned long calibrate_blackhole(unsigned long target, unsigned long tokens_low,
-     unsigned long tokens_high, unsigned long core_id, unsigned long NUMTRIES)
+
+typedef struct {
+    int64_t tokens;         // the value passed to blackhole()
+    unsigned long ticks;    // duration in units of timer ticks
+} blackhole_measurement_t;
+
+
+static blackhole_measurement_t calibrate_blackhole_helper(const unsigned long target_ticks,
+     const unsigned long tokens_low, const unsigned long tokens_high,
+     const unsigned long thread, const unsigned long NUMTRIES, const int verbose)
 {
-    unsigned long tokens_diff = tokens_high - tokens_low;
-    unsigned long tokens_mid = (tokens_diff / 2) + tokens_low;
-    unsigned long target_elapsed_total = NUMTRIES * target;
+    const unsigned long tokens_diff = tokens_high - tokens_low;
+    const unsigned long tokens_mid = (tokens_diff / 2) + tokens_low;
+    const unsigned long target_total_ticks = NUMTRIES * target_ticks;
 
 #ifdef DDEBUG
-    printf("target = %lu, target_elapsed_total = %lu, tokens_low = %lu, tokens_high = %lu, "
-           "tokens_diff = %lu, tokens_mid = %lu\n",
-            target, target_elapsed_total, tokens_low, tokens_high, tokens_diff, tokens_mid);
+    printf("thread %lu: target_ticks = %lu, target_total_ticks = %lu, "
+            "tokens_low = %lu, tokens_high = %lu, tokens_diff = %lu, tokens_mid = %lu\n",
+            thread, target_ticks, target_total_ticks,
+            tokens_low, tokens_high, tokens_diff, tokens_mid);
 #endif
 
     if (tokens_diff == 1) {
         // the answer is either tokens_low or tokens_high
 
-        unsigned long ret_low = evaluate_blackhole(tokens_low, NUMTRIES);
-        unsigned long ret_high = evaluate_blackhole(tokens_high, NUMTRIES);
+        const unsigned long low_ticks = evaluate_blackhole(tokens_low, NUMTRIES);
+        const unsigned long high_ticks = evaluate_blackhole(tokens_high, NUMTRIES);
+        const long low_ticks_diff = (long) (low_ticks - target_total_ticks);
+        const long high_ticks_diff = (long) (high_ticks - target_total_ticks);
+        const unsigned long low_ticks_diff_abs = labs(low_ticks_diff);
+        const unsigned long high_ticks_diff_abs = labs(high_ticks_diff);
 
-#ifdef DEBUG
-    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n",
-            core_id, ret_low, tokens_low, target_elapsed_total);
-    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n",
-            core_id, ret_high, tokens_high, target_elapsed_total);
-#endif
-        unsigned long low_diff = labs((long) (ret_low - target_elapsed_total));
-        unsigned long high_diff = labs((long) (ret_high - target_elapsed_total));
+        if (verbose >= VERBOSE_MORE)
+            printf("thread %lu: %lu tokens_low --> %lu hwticks, low_ticks_diff = %ld; "
+                    "%lu tokens_high --> %lu hwticks, high_ticks_diff = %ld%s\n",
+                    thread,
+                    tokens_low, low_ticks, low_ticks_diff,
+                    tokens_high, high_ticks, high_ticks_diff,
+                    low_ticks >= high_ticks ? "; low>=high paradox" : "");
 
-        if (low_diff < high_diff) {
+        if (low_ticks_diff_abs < high_ticks_diff_abs) {
+
             if (tokens_low >= (TOKENS_MAX_HIGH-1)) {
                 printf("tokens is TOKENS_MAX_HIGH or TOKENS_MAX_HIGH -1.  requested delay is too long or too short.\n");
             }
 
-            return tokens_low;
+            return (blackhole_measurement_t) { .tokens = tokens_low, .ticks = low_ticks };
         }
 
         if (tokens_high >= (TOKENS_MAX_HIGH-1)) {
             printf("tokens is TOKENS_MAX_HIGH or TOKENS_MAX_HIGH -1.  requested delay is too long or too short.\n");
         }
 
-        return tokens_high;
+        return (blackhole_measurement_t) { .tokens = tokens_high, .ticks = high_ticks };
     }
 
-    // Measure if this # of tokens is the proper #.
-    unsigned long t = evaluate_blackhole(tokens_mid, NUMTRIES);
+    // Measure the duration of NUMTRIES calls to blackhole().
+    const unsigned long t = evaluate_blackhole(tokens_mid, NUMTRIES);
 
-#ifdef DEBUG
-    printf("t(%lu) = %lu, tokens_mid = %lu target_elapsed_total = %lu\n", core_id, t, tokens_mid, target_elapsed_total);
-#endif
+    if (verbose >= VERBOSE_MORE)
+        printf("thread %lu: %lu tokens --> %lu hwticks, target_total_ticks = %lu, diff = %ld\n",
+            thread, tokens_mid, t, target_total_ticks, target_total_ticks - t);
 
-    if (t > target_elapsed_total) {
-        tokens_mid = calibrate_blackhole(target, tokens_low, tokens_mid, core_id, NUMTRIES);
-    } else if (t < target_elapsed_total) {
-        tokens_mid = calibrate_blackhole(target, tokens_mid, tokens_high, core_id, NUMTRIES);
+    if (t > target_total_ticks) {
+        return calibrate_blackhole_helper(target_ticks, tokens_low, tokens_mid, thread, NUMTRIES, verbose);
+    } else if (t < target_total_ticks) {
+        return calibrate_blackhole_helper(target_ticks, tokens_mid, tokens_high, thread, NUMTRIES, verbose);
     }
 
-    return tokens_mid;
+    return (blackhole_measurement_t) { .tokens = tokens_mid, .ticks = t };
 }
+
+static double hwticks_to_ns(const unsigned long hwticks) {
+    return 1e9 * hwticks / timer_get_timer_freq();
+}
+
+static int cmp_blackhole_measurement(const void * a, const void * b) {
+    return ((blackhole_measurement_t *) a)->ticks - ((blackhole_measurement_t *) b)->ticks;
+}
+
+// calibrate_blackhole:  find the target number of 'tokens' for blackole()
+// to take 'target' timer ticks to run
+unsigned long calibrate_blackhole(const unsigned long target_ticks,
+     const unsigned long tokens_low, const unsigned long tokens_high,
+     const unsigned long thread, const unsigned long NUMTRIES, const int verbose)
+{
+
+    // Searching for a blackhole parameter that runs for a target_ticks duration
+    // is not 100% reliable because their relationship is nonlinear;  sometimes
+    // an incrementally larger parameter results in a shorter duration, and vice
+    // versa.  Thus, using binary search in calibrate_blackhole_helper() does
+    // not guarantee accuracy nor repeatability.  So try to find it a few times
+    // and pick the median to improve the chances that the result is reasonable.
+
+    const size_t num_tries = 5;
+    blackhole_measurement_t results[num_tries];
+
+    for (size_t i = 0; i < num_tries; i++) {
+        if (verbose >= VERBOSE_MORE)
+            printf("thread %lu: target_ticks = %lu, target_total_ticks = %lu, try = %zu\n",
+                thread, target_ticks, target_ticks * NUMTRIES, i);
+
+        results[i] = calibrate_blackhole_helper(target_ticks,
+            tokens_low, tokens_high, thread, NUMTRIES, verbose);
+    }
+
+    qsort(results, num_tries, sizeof(results[0]), cmp_blackhole_measurement);
+
+    if (verbose >= VERBOSE_MORE)
+        for (size_t i = 0; i < num_tries; i++) {
+            double ns = hwticks_to_ns(results[i].ticks) / NUMTRIES;
+            printf("%lu: results[%zu] ticks=%lu tokens=%lu ns=%.f\n",
+                    thread, i, results[i].ticks, results[i].tokens, ns);
+        }
+
+    const size_t i = num_tries / 2;  // select median result
+    const double ns = hwticks_to_ns(results[i].ticks) / NUMTRIES;
+
+    if (verbose >= VERBOSE_MORE)
+        printf("%lu: returning ticks=%lu tokens=%ld ns=%.f for target_ticks=%lu\n",
+            thread, results[i].ticks, results[i].tokens, ns, target_ticks);
+
+    return results[i].tokens;
+}
+
 
 static double measure_blackhole_duration(unsigned long count, unsigned long hwtimer_frequency) {
 
@@ -411,7 +461,7 @@ static double measure_blackhole_duration(unsigned long count, unsigned long hwti
     uint64_t hwtimer_stop = timer_get_counter_start();
 
     uint64_t hwtimer_diff = hwtimer_stop - hwtimer_start;
-    double ns_n = 1e9 * hwtimer_diff / hwtimer_frequency;
+    double ns_n = hwticks_to_ns(hwtimer_diff);
     double ns = ns_n / n;
 
     return ns;
@@ -422,15 +472,15 @@ static double measure_blackhole_duration(unsigned long count, unsigned long hwti
  * an estimated number of ticks. All threads participate to take
  * into account pipeline effects of multithreading or hybrid cores.
  */
-static void calibrate_timer(thread_args_t *x, unsigned long thread, unsigned long NUMTRIES)
+static void calibrate_timer(thread_args_t *x, const unsigned long thread, const unsigned long NUMTRIES, const int verbose)
 {
     synchronize_threads(locks.p_calibrate_lock, x->num_threads);
 
     if (x->hold_unit == NS) {
-        /* Determine how many timer ticks would happen for this wait time */
-        unsigned long hold = (unsigned long)((double)x->hold * x->tickspns);
-        /* Calibrate the number of loops we have to do */
-        x->hold_count = calibrate_blackhole(hold, 0, TOKENS_MAX_HIGH, thread, NUMTRIES);
+        // Determine how many timer ticks should happen for this wait time
+        unsigned long hold_ticks = (unsigned long)((double)x->hold * x->tickspns);
+        // Calibrate the number of loops (tokens) we have to do for hold_ticks
+        x->hold_count = calibrate_blackhole(hold_ticks, 0, TOKENS_MAX_HIGH, thread, NUMTRIES, verbose);
     } else {
         x->hold_count = x->hold / 2;  // because there are 2 instructions in blackhole()
     }
@@ -438,8 +488,8 @@ static void calibrate_timer(thread_args_t *x, unsigned long thread, unsigned lon
     synchronize_threads(locks.p_calibrate_lock, x->num_threads);
 
     if (x->post_unit == NS) {
-        unsigned long post = (unsigned long)((double)x->post * x->tickspns);
-        x->post_count = calibrate_blackhole(post, 0, TOKENS_MAX_HIGH, thread, NUMTRIES);
+        unsigned long post_ticks = (unsigned long)((double)x->post * x->tickspns);
+        x->post_count = calibrate_blackhole(post_ticks, 0, TOKENS_MAX_HIGH, thread, NUMTRIES, verbose);
     } else {
         x->post_count = x->post / 2;  // because there are 2 instructions in blackhole()
     }
@@ -458,7 +508,7 @@ static void calibrate_timer(thread_args_t *x, unsigned long thread, unsigned lon
     x->results.post_ns = post_ns;
 
     if (x->verbose >= VERBOSE_YES)
-    printf("Calibrated thread %lu on CPU %lu with hold = %lu %s (hold_count = %lu) -> %0.2f ns; post = %lu %s (post_count = %lu) -> %0.2f ns\n",
+        printf("Calibrated thread %lu on CPU %lu with hold = %lu %s (hold_count = %lu) -> %0.2f ns; post = %lu %s (post_count = %lu) -> %0.2f ns\n",
             thread, x->run_on_this_cpu,
             x->hold, x->hold_unit == NS? "ns" : "instructions", x->hold_count, hold_ns,
             x->post, x->post_unit == NS? "ns" : "instructions", x->post_count, post_ns);
@@ -674,13 +724,13 @@ void* hmr(void *ptr)
     } else {
         fetchadd64_release(locks.p_ready_lock, 1);  // all subordinate threads add 1 to p_ready_lock
 
-        /* Spin until the "marshal" sets the lsb of p_sync_lock */
+        // Spin until the "marshal" sets the lsb of p_sync_lock
         wait64(locks.p_sync_lock, (num_threads * 2) | 1);
     }
 
     // All threads calibrate their own blackhole timer -----
 
-    calibrate_timer(x, thread, x->blackhole_numtries);
+    calibrate_timer(x, thread, x->blackhole_numtries, x->verbose);
     hold_count = x->hold_count;
     post_count = x->post_count;
 
@@ -716,7 +766,7 @@ void* hmr(void *ptr)
         do {
 
             for (size_t i = 0; i < run_limit_inner_loop_iters; i++) {
-                /* Do a lock thing */
+                // Do a lock thing
 #ifndef __LINUX_OSQ_LOCK_H
                 // osq_lock does not use the lock pointer because each node has
                 // its own osq in a separate cacheline, so this prefetch is redundant
@@ -767,7 +817,7 @@ void* hmr(void *ptr)
         cs.ticks_start = ticks_start = get_raw_counter();
 
         while (!num_acquires || lock_acquires < num_acquires) {
-            /* Do a lock thing */
+            // Do a lock thing
 #ifndef __LINUX_OSQ_LOCK_H      // osq_lock does not use the lock pointer, and these prefetches of it are redundant
             prefetch64(lock);
 #endif
