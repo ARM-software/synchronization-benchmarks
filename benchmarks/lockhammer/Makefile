@@ -125,25 +125,26 @@ TARGET_ARCH = $(shell $(CC) -dumpmachine | cut -d '-' -f 1)
 
 # executable targets by lock type
 
-TEST_TARGETS=lh_swap_mutex \
-	lh_event_mutex \
-	lh_cas_event_mutex \
-	lh_cas_lockref \
-	lh_cas_rw_lock \
-	lh_incdec_refcount \
-	lh_ticket_spinlock \
-	lh_queued_spinlock \
-	lh_empty \
-	lh_jvm_objectmonitor \
-	lh_osq_lock \
-	lh_clh_spinlock \
-	lh_tbb_spin_rw_mutex
+TEST_TARGETS=
+TEST_TARGETS+=lh_swap_mutex
+TEST_TARGETS+=lh_event_mutex
+TEST_TARGETS+=lh_cas_event_mutex
+TEST_TARGETS+=lh_cas_lockref
+TEST_TARGETS+=lh_cas_rw_lock
+TEST_TARGETS+=lh_incdec_refcount
+TEST_TARGETS+=lh_ticket_spinlock
+TEST_TARGETS+=lh_queued_spinlock
+TEST_TARGETS+=lh_empty
+TEST_TARGETS+=lh_jvm_objectmonitor
+TEST_TARGETS+=lh_osq_lock
+TEST_TARGETS+=lh_clh_spinlock
+TEST_TARGETS+=lh_tbb_spin_rw_mutex
 
 CURRENTLY_BROKEN_TARGETS=
 
 ifeq ($(TARGET_ARCH),aarch64)
-	TEST_TARGETS+=lh_hybrid_spinlock \
-		lh_hybrid_spinlock_fastdequeue
+TEST_TARGETS+=lh_hybrid_spinlock
+TEST_TARGETS+=lh_hybrid_spinlock_fastdequeue
 endif
 
 # uncomment to redefine TEST_TARGETS to build just one lock test type
