@@ -102,8 +102,8 @@ static void new_print_usage (const char * invoc) {
 #ifdef __aarch64__
     "      --disable-outline-atomics-lse           disable use of LSE in outline atomics\n"
 #endif
-    " -v | --verbose                               print verbose messages\n"
-    "      --more-verbose                          print even more verbose messages\n"
+    " -v | --verbose                               print verbose messages (use 2x for more verbose)\n"
+    "      --more-verbose                          print more verbose messages\n"
     "\n"
     "lock-specific:\n"
     " -- <workload-specific arguments>             lock-specific arguments are passed after --\n"
@@ -526,7 +526,11 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
 #endif
           case 'v':
           case longopt_verbose:
-            pargs->verbose = VERBOSE_YES;
+            if (pargs->verbose >= VERBOSE_YES) {
+                pargs->verbose = VERBOSE_MORE;
+            } else {
+                pargs->verbose = VERBOSE_YES;
+            }
             break;
           case '?':
           case ':':
