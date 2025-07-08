@@ -191,7 +191,82 @@ void * do_hugepage_alloc(int use_hugepages, size_t hugepage_req_physaddr, int ve
 }
 
 
-void * dynamic_lock_memory_base = NULL;
+
+// this tracks heap-allocated memory for release at the end of main
+
+// don't actually track the allocations and let the OS clean up
+#define DYNAMIC_LOCK_MEMORY_TRACKING_NOOP
+
+// printf messages to show the stack
+//#define DEBUG_DYNAMIC_LOCK_MEMORY
+
+size_t num_dynamic_lock_memory = 0;
+void * (*dynamic_lock_memory_base) = NULL;
+
+void push_dynamic_lock_memory(void * p) {
+#ifdef DYNAMIC_LOCK_MEMORY_TRACKING_NOOP
+    (void) p;
+    return;
+#endif
+
+    void * b = reallocarray(dynamic_lock_memory_base,
+         num_dynamic_lock_memory + 1, sizeof(dynamic_lock_memory_base[0]));
+
+    if (b == NULL) {
+        perror("reallocarray failed in append_dynamic_lock_memory");
+        exit(EXIT_FAILURE);
+    }
+
+#if 0
+    // for seeing if reallocarray moved it to a completely different address
+    if (dynamic_lock_memory_base && dynamic_lock_memory_base != b) {
+        printf("INFO: dynamic_lock_memory_base = %p -> %p\n", dynamic_lock_memory_base, b);
+    }
+#endif
+
+    dynamic_lock_memory_base = b;
+    dynamic_lock_memory_base[num_dynamic_lock_memory++] = p;
+
+#ifdef DEBUG_DYNAMIC_LOCK_MEMORY
+    printf("push dynamic_lock_memory_base[%zu] = %p\n", num_dynamic_lock_memory - 1, p);
+    for (size_t i = 0; i < num_dynamic_lock_memory; i++) {
+        printf(" dynamic_lock_memory_base[%zu] = %p\n", i, dynamic_lock_memory_base[i]);
+    }
+#endif
+}
+
+void pop_dynamic_lock_memory(void * p) {
+#ifdef DYNAMIC_LOCK_MEMORY_TRACKING_NOOP
+    (void) p;
+    return;
+#endif
+
+#ifdef DEBUG_DYNAMIC_LOCK_MEMORY
+    printf("pop  dynamic_lock_memory_base[%zu] = %p, expected %p\n", num_dynamic_lock_memory, dynamic_lock_memory_base[num_dynamic_lock_memory - 1], p);
+#endif
+
+    if (num_dynamic_lock_memory && dynamic_lock_memory_base[num_dynamic_lock_memory - 1] != p) {
+        fprintf(stderr, "ERROR: dynamic_lock_memory_base stack did not match expected value\n");
+        exit(EXIT_FAILURE);
+    }
+
+    dynamic_lock_memory_base = reallocarray(dynamic_lock_memory_base,
+            num_dynamic_lock_memory - 1, sizeof(dynamic_lock_memory_base[0]));
+    num_dynamic_lock_memory--;
+}
+
+void free_dynamic_lock_memory(void) {
+#ifdef DYNAMIC_LOCK_MEMORY_TRACKING_NOOP
+    return;
+#endif
+
+    for (size_t i = 0; i < num_dynamic_lock_memory; i++) {
+#ifdef DEBUG_DYNAMIC_LOCK_MEMORY
+        printf("free dynamic_lock_memory_base[%zu] = %p\n", i, dynamic_lock_memory_base[i]);
+#endif
+        free(dynamic_lock_memory_base[i]);
+    }
+}
 
 // allocate memory, optionally using hugepages
 void * do_alloc(size_t length, int use_hugepages, size_t nonhuge_alignment, size_t hugepage_req_physaddr, int verbose) {
@@ -216,7 +291,7 @@ void * do_alloc(size_t length, int use_hugepages, size_t nonhuge_alignment, size
     // prefault
     memset(p, 1, length);
 
-    dynamic_lock_memory_base = p;
+    push_dynamic_lock_memory(p);
 
     return p;
 }

@@ -51,6 +51,10 @@ void * do_hugepage_alloc(int use_hugepages, size_t hugepage_req_physaddr, int ve
 void * do_alloc(size_t length, int use_hugepages, size_t nonhuge_alignment, size_t hugepage_req_physaddr, int verbose);
 void print_hugepage_physaddr_and_exit(void * mmap_ret);
 
+void push_dynamic_lock_memory(void *);
+void pop_dynamic_lock_memory(void *);
+void free_dynamic_lock_memory(void);
+
 // hugepage flag parameter parsing
 int parse_hugepage_parameter(const char * optarg);
 const char * hugepage_map (int enum_param_value);

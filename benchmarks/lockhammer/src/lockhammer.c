@@ -376,6 +376,8 @@ int main(int argc, char** argv)
     locks.p_sync_lock      = p_other_lock_memory + 1 * (sysinfo.erg_bytes / (sizeof(uint64_t)));
     locks.p_calibrate_lock = p_other_lock_memory + 2 * (sysinfo.erg_bytes / (sizeof(uint64_t)));
 
+    push_dynamic_lock_memory(p_other_lock_memory);
+
     if (args.verbose >= VERBOSE_MORE) {
         if (geteuid() == 0) {
             // if root, we can show the physical address as well
@@ -675,17 +677,9 @@ int main(int argc, char** argv)
 
     print_summary(&args);
 
-    // clean up all malloc'd memory
-    extern void * dynamic_lock_memory_base;
-    if (dynamic_lock_memory_base) {
-        free(dynamic_lock_memory_base);
-    }
-
-    if (p_other_lock_memory) {
-        free(p_other_lock_memory);
-    }
-
-    // TODO: the heap memory allocated by in the test's initialize_lock() is not released.
+    // clean up all malloc'd memory tracked in dynamic_lock_memory_base
+    // TODO: track all heap memory allocated by tests' initialize_lock()
+    free_dynamic_lock_memory();
 
     free(args.crits);
     free(args.pars);
