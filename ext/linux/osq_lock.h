@@ -484,21 +484,33 @@ static inline void osq_lock_init(unsigned long * p_test_lock, int * pinorder, un
         fprintf(stderr, "ERROR: pinorder (cpu_list) should never be a null pointer!\n"); exit(-1);
     }
 
-    if (thread_to_sleep_time_us)
+    if (thread_to_sleep_time_us) {
         free(thread_to_sleep_time_us);
+        pop_dynamic_lock_memory(thread_to_sleep_time_us);
+    }
 
     thread_to_sleep_time_us = malloc(sizeof(thread_to_sleep_time_us[0]) * num_threads);
     if (! thread_to_sleep_time_us) {
         fprintf(stderr, "ERROR: thread_to_sleep_time_us malloc failure\n"); exit(-1);
     }
 
-    if (thread_to_relax)
+    if (thread_to_relax) {
         free(thread_to_relax);
+        pop_dynamic_lock_memory(thread_to_relax);
+    }
 
     thread_to_relax = malloc(sizeof(thread_to_relax[0]) * num_threads);
     if (! thread_to_relax) {
         fprintf(stderr, "ERROR: thread_to_relax malloc failure\n"); exit(-1);
     }
+
+#if 0
+    printf("thread_to_sleep_time_us = %p, thread_to_relax = %p\n",
+        thread_to_sleep_time_us, thread_to_relax);
+#endif
+
+    push_dynamic_lock_memory(thread_to_relax);
+    push_dynamic_lock_memory(thread_to_sleep_time_us);
 
     for (size_t thread_number = 0; thread_number < num_threads; thread_number++) {
 

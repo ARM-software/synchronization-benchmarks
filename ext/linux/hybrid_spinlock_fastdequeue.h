@@ -53,9 +53,10 @@ struct mcs_spinlock *mcs_pool;
 void mcs_init_locks (uint64_t *lock, unsigned long cores)
 {
 	size_t n = 4 * cores * sizeof(struct mcs_spinlock);
-	if (mcs_pool) { free(mcs_pool); }
+	if (mcs_pool) { free(mcs_pool); pop_dynamic_lock_memory(mcs_pool); }
 	mcs_pool = (struct mcs_spinlock *) malloc(n);
 	if (! mcs_pool) { fprintf(stderr, "malloc failed in " __FILE__ " %s\n", __func__); exit(-1); }
+	push_dynamic_lock_memory(mcs_pool);
 	memset(mcs_pool, 0, n);
 }
 
