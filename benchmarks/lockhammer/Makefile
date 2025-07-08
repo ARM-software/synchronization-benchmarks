@@ -139,6 +139,7 @@ TEST_TARGETS+=lh_jvm_objectmonitor
 TEST_TARGETS+=lh_osq_lock
 TEST_TARGETS+=lh_clh_spinlock
 TEST_TARGETS+=lh_tbb_spin_rw_mutex
+TEST_TARGETS+=lh_pthread_mutex_lock
 
 CURRENTLY_BROKEN_TARGETS=
 
