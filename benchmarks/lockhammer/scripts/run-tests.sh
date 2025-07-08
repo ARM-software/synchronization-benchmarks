@@ -105,6 +105,7 @@ lh_osq_lock
 #lh_tbb_spin_rw_mutex
 lh_ticket_spinlock
 lh_pthread_mutex_lock
+lh_pthread_mutex_trylock
 EOF2
 )
 
