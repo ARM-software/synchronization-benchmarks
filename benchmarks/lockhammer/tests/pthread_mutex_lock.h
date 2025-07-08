@@ -85,12 +85,13 @@ void pthread_mutex_parse_args(test_args_t * t, int argc, char ** argv) {
         }
     }
 
-    // XXX: test_type_name is not free'd before program exit
     if (-1 == asprintf(&test_type_name, "{mutex_type=%s}",
                 mutex_type_name)) {
         fprintf(stderr, "asprintf failed\n");
         exit(-1);
     }
+
+    push_dynamic_lock_memory(test_type_name);
 }
 
 

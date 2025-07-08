@@ -111,6 +111,8 @@ void pthread_mutex_parse_args(test_args_t * t, int argc, char ** argv) {
         fprintf(stderr, "asprintf failed\n");
         exit(-1);
     }
+
+    push_dynamic_lock_memory(test_type_name);
 }
 
 
