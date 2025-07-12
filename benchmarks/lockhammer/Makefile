@@ -596,7 +596,7 @@ $(BUILD_DIR)/measure.lh_jvm_objectmonitor.o: ../../ext/jvm/jvm_objectmonitor.h |
 
 $(BUILD_DIR)/measure.lh_tbb_spin_rw_mutex.o: ../../ext/tbb/tbb_spin_rw_mutex.h | $(BUILD_DIR)
 	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c -c -o $@ $(INCLUDE_TBB) -DNDEBUG
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c -c -o $@ $(INCLUDE_TBB)
 
 
 
@@ -640,7 +640,7 @@ $(BUILD_DIR)/measure.lh_jvm_objectmonitor.d: ../../ext/jvm/jvm_objectmonitor.h s
 
 $(BUILD_DIR)/measure.lh_tbb_spin_rw_mutex.d: ../../ext/tbb/tbb_spin_rw_mutex.h src/measure.c | $(BUILD_DIR)
 	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c $(INCLUDE_TBB) -DNDEBUG
+	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c $(INCLUDE_TBB)
 
 
 # preprocessed output (.i) for specific locks
@@ -683,7 +683,7 @@ $(BUILD_DIR)/measure.lh_jvm_objectmonitor.i: ../../ext/jvm/jvm_objectmonitor.h |
 
 $(BUILD_DIR)/measure.lh_tbb_spin_rw_mutex.i: ../../ext/tbb/tbb_spin_rw_mutex.h | $(BUILD_DIR)
 	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c -E -o $@ $(INCLUDE_TBB) -DNDEBUG
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c -E -o $@ $(INCLUDE_TBB)
 
 
 
