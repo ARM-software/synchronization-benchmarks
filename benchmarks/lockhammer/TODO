@@ -58,3 +58,171 @@ add a memory update in the critical section
 - optionally store update on the same cacheline as the lock
 - expect a lot of kernel locks to have this
 - optionally store update somewhere else than the lock cache line (GUPS)
+
+
+
+
+The blackhole() function is used to perform the critical and parallel
+durations.  The 'tokens' parameter given to blackhole() controls the length of
+the duration.  However, the measured duration may not be monotonically
+increasing with the value of 'tokens'.  This is most consequential when the
+critical/parallel durations are requested in units of nanoseconds, for which a
+parameter is determined using a binary search and a very quick measurement is
+taken for each candidate tokens value.  Since each candidate is different than
+the previous one, and the range of the number of tokens is reduced toward a
+target, the measured duration becomes less deterministic.  However, during the
+benchmark execution, the number of iterations is the same for each critical and
+parallel duration.  As such, requesting the critical and parallel durations in
+units of instructions is more precise than in units of nanoseconds.
+
+If more accurate nanosecond durations are needed, the number of instructions
+can be determined as follows:
+
+1. run the lh_empty test on the required cpus/pinorder with the requested
+nanoseconds duration as the critical duration parameter, and 0 instructions for
+the parallel duration parameter.  Specify the number of lock acquires using the
+-a flag, and with the -v flag to increase the verbosity.  For example:
+
+$ build.relax_pause/lh_empty -c 50ns -p 0 -a 1000000 -o 0,1 -Y -v
+Starting test_name=empty variant_name=relax_pause test_type=n/a
+page_size_bytes = 4096
+Exclusive Reservation Granule size in bytes = 64
+Determining timer frequency ...
+Found it as 3417548640 Hz (which could be wrong, use --estimate-hwtimer-frequency to measure and --hwtimer-frequency to override)
+--num-acquires 1000000 per thread
+processing pinorders
+
+---------------------------------------------------------------------------------
+measurement 1/1 (test 1/1 iteration 1/1), critical=50ns parallel=0inst, pinorder=0 num_threads=2
+---------------------------------------------------------------------------------
+Calibrated thread 0 on CPU 0 with hold = 50 ns (hold_count = 202) -> 53.67 ns; post = 0 instructions (post_count = 0) -> 1.56 ns
+Calibrated thread 1 on CPU 1 with hold = 50 ns (hold_count = 198) -> 52.29 ns; post = 0 instructions (post_count = 0) -> 1.56 ns
+Measurement is about to start...                             ^-------------------- hold_count = instructions/2
+Measurement completed.
+basic metrics:___________________________________________
+num_threads = 2 [thrds]
+total_lock_acquires = 2000000   <------------------------------------------------ 2 million total lock acquires
+lock_acquires_mean = 1000000.000 per thread, stddev = 0.000, stddev/mean = 0.000000
+avg_critical_ns_per_loop = 52.982 [crit_ns]
+avg_parallel_ns_per_loop = 1.560 [par_ns]
+full_concurrency_fraction = 0.986
+lock_acquires_stddev_over_mean = 0.000
+duration metrics:________________________________________
+wall_elapsed_ns = 55647522 (0.06 seconds)
+total_cputime_ns = 110361725 (0.11 seconds)  <---------------------------------------- total cputime of 2 threads,  cputime/acquire = 110361725 / 2000000 = 55.18 ns.
+total_parallel_cputime_ns = 3120657 (0.00 seconds)
+total_critical_cputime_ns = 105964548 (0.11 seconds)
+overhead metrics:________________________________________
+total_lock_overhead_cputime_ns = 1276518 (0.00 seconds)
+lock_overhead_cputime_percent = 1.156667%
+avg_lock_overhead_cputime_ns = 0.638259 per lock acquire [overhead_ns]
+performance metrics:_____________________________________
+cputime_ns_per_lock_acquire = 55.180863 [cpu_ns/lock]
+wall_elapsed_ns_per_lock_acquire = 27.823761
+total_lock_acquires_per_second = 35940504.233055 [locks/wall_sec]
+ratio metrics:___________________________________________
+cpu_to_wall_elapsed_ratio = 1.983228
+mean_lock_depth = 0.000000
+Finished test_name=empty variant_name=relax_pause test_type=n/a
+
+---------------
+Results Summary
+---------------
+
+pinorders:
+po  cpus
+0   0 1
+
+results by pinorder:
+po  meas  test  iter  thrds | cpu_ns/lock - crit_ns - par_ns  = overhead_ns % | lasom | locks/wall_sec
+0   1     1     1     2     | 55            53        2         1          1% | 0.000 | 35940504
+
+
+
+2.  Rerun the same command, but replace the -c 50ns with 2x the hold_count parameter because the critical duration is specified in number of instructions and there are two instructions per hold.
+Manually adjust the critical duration instructions until cputime/acquire is as close to the target as possible.  Use this instruction count for the required delay.  For example, a 177*2 = 354
+instructions gives total_cputime_ns = 101219541 for 2000000 acquires, which is 50.61 ns/acquire.
+
+
+$ build.relax_pause/lh_empty -c 354 -p 0  -a 1000000 -o 0,1 -Y -v
+Starting test_name=empty variant_name=relax_pause test_type=n/a
+page_size_bytes = 4096
+Exclusive Reservation Granule size in bytes = 64
+Determining timer frequency ...
+Found it as 3417546720 Hz (which could be wrong, use --estimate-hwtimer-frequency to measure and --hwtimer-frequency to override)
+--num-acquires 1000000 per thread
+processing pinorders
+
+---------------------------------------------------------------------------------
+measurement 1/1 (test 1/1 iteration 1/1), critical=354inst parallel=0inst, pinorder=0 num_threads=2
+---------------------------------------------------------------------------------
+Calibrated thread 0 on CPU 0 with hold = 354 instructions (hold_count = 177) -> 46.75 ns; post = 0 instructions (post_count = 0) -> 1.54 ns
+Calibrated thread 1 on CPU 1 with hold = 354 instructions (hold_count = 177) -> 49.28 ns; post = 0 instructions (post_count = 0) -> 1.54 ns
+Measurement is about to start...
+Measurement completed.
+basic metrics:___________________________________________
+num_threads = 2 [thrds]
+total_lock_acquires = 2000000
+lock_acquires_mean = 1000000.000 per thread, stddev = 0.000, stddev/mean = 0.000000
+avg_critical_ns_per_loop = 48.013 [crit_ns]
+avg_parallel_ns_per_loop = 1.539 [par_ns]
+full_concurrency_fraction = 0.997
+lock_acquires_stddev_over_mean = 0.000
+duration metrics:________________________________________
+wall_elapsed_ns = 50771447 (0.05 seconds)
+total_cputime_ns = 101219541 (0.10 seconds)    <---------------------------------------------  101219541 / 2000000 = 50.61 ns/acquire
+total_parallel_cputime_ns = 3078816 (0.00 seconds)
+total_critical_cputime_ns = 96025899 (0.10 seconds)
+overhead metrics:________________________________________
+total_lock_overhead_cputime_ns = 2400806 (0.00 seconds)
+lock_overhead_cputime_percent = 2.371880%
+avg_lock_overhead_cputime_ns = 1.200403 per lock acquire [overhead_ns]
+performance metrics:_____________________________________
+cputime_ns_per_lock_acquire = 50.609771 [cpu_ns/lock]
+wall_elapsed_ns_per_lock_acquire = 25.385724
+total_lock_acquires_per_second = 39392219.804175 [locks/wall_sec]
+ratio metrics:___________________________________________
+cpu_to_wall_elapsed_ratio = 1.993631
+mean_lock_depth = 0.000000
+Finished test_name=empty variant_name=relax_pause test_type=n/a
+
+---------------
+Results Summary
+---------------
+
+pinorders:
+po  cpus
+0   0 1
+
+results by pinorder:
+po  meas  test  iter  thrds | cpu_ns/lock - crit_ns - par_ns  = overhead_ns % | lasom | locks/wall_sec
+0   1     1     1     2     | 51            48        2         1          2% | 0.000 | 39392220
+
+
+3.  This gives a better chance that the target duration matches the intended.  For example:
+
+$ build.relax_pause/lh_pthread_mutex -c $((177*2)) -p 0  -T 2 -o 0,1 -Y
+Starting test_name=pthread_mutex variant_name=relax_pause test_type=default
+Finished test_name=pthread_mutex variant_name=relax_pause test_type=default
+po  cpus
+0   0 1
+
+po  meas  test  iter  thrds | cpu_ns/lock - crit_ns - par_ns  = overhead_ns % | lasom | locks/wall_sec
+0   1     1     1     2     | 297           48        0         249       84% | 0.004 | 6724198
+                                            ^------ ignore this number
+
+
+The cpu_ns/lock and locks/wall_sec are accurate.  However, the crit_ns and par_ns are calculated so may not be as precise.
+
+
+$ build.relax_pause/lh_pthread_mutex -c $((177*2)) -p 0  -T 2 -o 0,1 -Y
+Starting test_name=pthread_mutex variant_name=relax_pause test_type=default
+Finished test_name=pthread_mutex variant_name=relax_pause test_type=default
+po  cpus
+0   0 1
+
+po  meas  test  iter  thrds | cpu_ns/lock - crit_ns - par_ns  = overhead_ns % | lasom | locks/wall_sec
+0   1     1     1     2     | 290           67        0         223       77% | 0.004 | 6896375
+
+                              ^---- cpu_ns/lock                                         ^
+
