@@ -237,7 +237,7 @@ static inline void internal_acquire_writer(unsigned long t) {
     int32_t count;
     DBG("init [%ld]: 0x%lx\n", t, state);
     for(count = 1;;atomic_backoff__pause(&count)) {
-        state_t s = (volatile state_t) state;
+        state_t s = *(volatile state_t *) &state;
         if( !(s & BUSY) ) { // no readers, no writers
             if( CAS(&state, WRITER, state)==s ) {
                 break; // successfully stored writer flag
@@ -260,7 +260,7 @@ static inline void internal_acquire_reader(unsigned long t) {
     int32_t count;
     DBG("init [%ld]: 0x%lx\n", t, state);
     for(count = 1;;atomic_backoff__pause(&count)) {
-        state_t s = (volatile state_t) state; // ensure reloading
+        state_t s = *(volatile state_t *) &state; // ensure reloading
         if( !(s & (WRITER|WRITER_PENDING)) ) { // no writer or write requests
             state_t t = \
                 (state_t)__TBB_FetchAndAddW( &state, (state_t) ONE_READER );
