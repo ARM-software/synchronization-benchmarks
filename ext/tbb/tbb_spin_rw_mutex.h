@@ -85,7 +85,7 @@
  *      It will back off and eventually yield the CPU when writer is holding a
  *      lock until the lock becomes available again.
  *
- *  Readers/Writers ratio (-r) and Pure readers (-m):
+ *  Readers/Writers ratio (-r) and Pure readers (-o):
  *
  *      - 'rw_mask' variable defines the ratio between readers and writers per
  *      thread. It is controlled using log2_ratio variable, cmdline args -r.
@@ -105,8 +105,8 @@
  *       > default log2_ratio is 6 e.g 63 reads per write.
  *
  *      - Pure readers are CPUs which will never perform a write acq/rel. The
- *        cmdline arg is a bit mask e.g. 0x8 will make 4th cpu (cpu id: 0x3)
- *        a pure reader. Default is 0x0 e.g. no pure readers.
+ *        cmdline arg is a list of CPUs that will be a pure reader if the CPU
+ *        is part of the measurement's pinorder.  Default is no pure readers.
  *
  */
 
@@ -121,7 +121,7 @@
 #undef parse_test_args
 #endif
 
-#define initialize_lock(lock, pinorder, threads) tbb_init_locks(lock, threads)
+#define initialize_lock(lock, cpulist, threads) tbb_init_locks(lock, cpulist, threads)
 #define parse_test_args(args, argc, argv) tbb_parse_args(args, argc, argv)
 
 #include "tbb.h"
@@ -134,7 +134,15 @@
 
 unsigned long log2_ratio = 0;
 unsigned long rw_mask = 0;
-unsigned long reader_cpu_mask = 0;
+
+cpu_set_t pure_reader_cpus;
+
+struct tbb_spin_rw_mutex_parameters_t {
+    unsigned long verbose;
+} tbb_spin_rw_mutex_parameters = {
+    .verbose = VERBOSE_NONE,
+};
+
 
 typedef struct {
     unsigned long c;
@@ -152,9 +160,9 @@ inline uint8_t is_writer(unsigned long i, uint8_t val) {
 
 void tbb_print_usage() {
     fprintf(stderr, "tbb_spin_rw_mutex additional options:\n");
-    fprintf(stderr, "\t[-h print this msg]\n");
-    fprintf(stderr, "\t[-r reader/writer log ratio, default: 6 (2^(6)-1 readers per writer)]\n");
-    fprintf(stderr, "\t[-m pure reader cpu mask, default: 0x0 (no pure readers)]\n");
+    fprintf(stderr, "\t -h print this msg\n");
+    fprintf(stderr, "\t -r reader/writer log ratio, default: 6 (2^(6)-1 readers per writer)\n");
+    fprintf(stderr, "\t -o cpu[,cpu...] pure reader cpu list\n");
 }
 
 void tbb_check_strtoul(int rval, char* endptr) {
@@ -166,14 +174,15 @@ void tbb_check_strtoul(int rval, char* endptr) {
     }
 }
 
-void tbb_parse_args(test_args_t * unused, int argc, char** argv) {
+void tbb_parse_args(test_args_t * t, int argc, char** argv) {
     int i = 0;
     char *endptr;
 
-    log2_ratio = 6;
-    reader_cpu_mask = 0x0;
+    tbb_spin_rw_mutex_parameters.verbose = t->verbose;
 
-    while ((i = getopt(argc, argv, "hr:m:")) != -1)
+    log2_ratio = 6;
+
+    while ((i = getopt(argc, argv, "hr:o:")) != -1)
     {
         switch (i) {
           case 'r':
@@ -185,14 +194,21 @@ void tbb_parse_args(test_args_t * unused, int argc, char** argv) {
                 exit(1);
             }
             break;
-          case 'm':
-            errno = 0;
-            if (!strncmp(optarg, "0x", 2))
-                reader_cpu_mask = strtoul(optarg, &endptr, 16);
-            else
-                reader_cpu_mask = strtoul(optarg, &endptr, 10);
+          case 'o':
+            {
+                const char * pinorder_delim = ",";
+                CPU_ZERO(&pure_reader_cpus);
 
-            tbb_check_strtoul(reader_cpu_mask, endptr);
+                char * csv = strtok(optarg, pinorder_delim);
+                while (csv) {
+                    int cpu = strtol(csv, (char **) NULL, 0);
+                    CPU_SET(cpu, &pure_reader_cpus);
+                    csv = strtok(NULL, pinorder_delim);
+                    if (tbb_spin_rw_mutex_parameters.verbose >= VERBOSE_YES) {
+                        printf("tbb_spin_rw_mutex: cpu %d is a pure reader\n", cpu);
+                    }
+                }
+            }
             break;
           case 'h':
             tbb_print_usage();
@@ -205,20 +221,17 @@ void tbb_parse_args(test_args_t * unused, int argc, char** argv) {
     }
 }
 
-void tbb_init_locks (unsigned long *lock, unsigned long cores) {
-    unsigned i;
+void tbb_init_locks (unsigned long *lock, int * cpulist, unsigned long threads) {
     rw_mask = ((1UL<<log2_ratio)-1);
     if (rw_counts) { free(rw_counts); }
-    rw_counts = (rw_count_t*) malloc(cores * sizeof(rw_count_t));
+    rw_counts = (rw_count_t*) malloc(threads * sizeof(rw_count_t));
 
     DBG("On each thread, for every %lu readers there will be 1 writer\n", rw_mask);
-    DBG("CPU mask 0x%lx will be readers\n", reader_cpu_mask);
 
-    // XXX: since reader_cpu_mask is unsigned long, this only supports up to 64 CPUs.
-
-    for (i=0; i < cores; ++i) {
-        rw_counts[i].pure_reader = (reader_cpu_mask & (1UL << i)) ? 1 : 0;
-        DBG("\t CPU[%u], a pure reader? %u\n", i, rw_counts[i].pure_reader);
+    for (unsigned long i = 0; i < threads; ++i) {
+        rw_counts[i].pure_reader = CPU_ISSET(cpulist[i], &pure_reader_cpus) ? 1 : 0;
+        rw_counts[i].c = 0;
+        DBG("\t CPU[%u] is a pure reader %u\n", cpulist[i], rw_counts[i].pure_reader);
     }
 }
 
