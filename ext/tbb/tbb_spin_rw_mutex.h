@@ -163,6 +163,9 @@ void tbb_print_usage() {
     fprintf(stderr, "\t -h print this msg\n");
     fprintf(stderr, "\t -r reader/writer log ratio, default: 6 (2^(6)-1 readers per writer)\n");
     fprintf(stderr, "\t -o cpu[,cpu...] pure reader cpu list\n");
+#ifndef TBB_LOOPS_BEFORE_YIELD_HARDCODED
+    fprintf(stderr, "\t -y loops_before_yield\n");
+#endif
 }
 
 void tbb_check_strtoul(int rval, char* endptr) {
@@ -182,7 +185,7 @@ void tbb_parse_args(test_args_t * t, int argc, char** argv) {
 
     log2_ratio = 6;
 
-    while ((i = getopt(argc, argv, "hr:o:")) != -1)
+    while ((i = getopt(argc, argv, "hr:o:y:")) != -1)
     {
         switch (i) {
           case 'r':
@@ -210,6 +213,18 @@ void tbb_parse_args(test_args_t * t, int argc, char** argv) {
                 }
             }
             break;
+#ifndef TBB_LOOPS_BEFORE_YIELD_HARDCODED
+          case 'y':
+            LOOPS_BEFORE_YIELD = strtoul(optarg, NULL, 0);
+            if (LOOPS_BEFORE_YIELD & (LOOPS_BEFORE_YIELD - 1)) {
+                fprintf(stderr, "tbb_spin_rw_mutex: -y loops_before_yield must be a power-of-2\n");
+                exit(1);
+            }
+            if (tbb_spin_rw_mutex_parameters.verbose >= VERBOSE_YES) {
+                printf("tbb_spin_rw_mutex: LOOPS_BEFORE_YIELD=%lu\n", LOOPS_BEFORE_YIELD);
+            }
+            break;
+#endif
           case 'h':
             tbb_print_usage();
             exit(0);
@@ -246,9 +261,8 @@ static inline state_t CAS(state_t *s, state_t new_val, state_t old_val) {
 }
 
 static inline void internal_acquire_writer(state_t * pstate, unsigned long t) {
-    int32_t count;
     DBG("init [%ld]: 0x%lx\n", t, *pstate);
-    for(count = 1;;atomic_backoff__pause(&count)) {
+    for(int32_t count = 1;; count = atomic_backoff__pause(count)) {
         state_t s = *(volatile state_t *) pstate;
         if( !(s & BUSY) ) { // no readers, no writers
             if( CAS(pstate, WRITER, s)==s ) {
@@ -269,9 +283,8 @@ static void internal_release_writer(state_t * pstate, unsigned long t) {
 }
 
 static inline void internal_acquire_reader(state_t * pstate, unsigned long t) {
-    int32_t count;
     DBG("init [%ld]: 0x%lx\n", t, *pstate);
-    for(count = 1;;atomic_backoff__pause(&count)) {
+    for(int32_t count = 1;; count = atomic_backoff__pause(count)) {
         state_t s = *(volatile state_t *) pstate; // ensure reloading
         if( !(s & (WRITER|WRITER_PENDING)) ) { // no writer or write requests
             state_t t = \

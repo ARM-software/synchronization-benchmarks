@@ -253,19 +253,28 @@ __TBB_MACHINE_DEFINE_ATOMICS(8, intptr_t)
  *
  * //! Class that implements exponential backoff.
  * 16 is approximately how many 'pause' x86 instruction takes for
- * their context switch, not changing it for now, do we need to change?
+ * their context switch.  This is hard-coded in tbb_machine.h,
+ * but we make it optionally a test parameter using the -y flag
+ * if TBB_LOOPS_BEFORE_YIELD_HARDCODED is not defined below.
  */
-#define LOOPS_BEFORE_YIELD 16
 
-static inline void atomic_backoff__pause(int32_t *count) {
-    if( *count<=LOOPS_BEFORE_YIELD ) {
-        __TBB_Pause(*count);
+//#define TBB_LOOPS_BEFORE_YIELD_HARDCODED
+#ifdef TBB_LOOPS_BEFORE_YIELD_HARDCODED
+#define LOOPS_BEFORE_YIELD 16
+#else
+unsigned long LOOPS_BEFORE_YIELD = 16;
+#endif
+
+static inline unsigned long atomic_backoff__pause(unsigned long count) {
+    if( count<=LOOPS_BEFORE_YIELD ) {
+        __TBB_Pause(count);
         // Pause twice as long the next time.
-        *count*=2;
+        count *= 2;
     } else {
         // Pause is so long that we might as well yield CPU to scheduler.
         __TBB_Yield();
     }
+    return count;
 }
 
 /*
