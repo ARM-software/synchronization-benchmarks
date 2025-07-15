@@ -160,11 +160,11 @@ inline uint8_t is_writer(unsigned long i, uint8_t val) {
 
 void tbb_print_usage() {
     fprintf(stderr, "tbb_spin_rw_mutex additional options:\n");
-    fprintf(stderr, "\t -h print this msg\n");
-    fprintf(stderr, "\t -r reader/writer log ratio, default: 6 (2^(6)-1 readers per writer)\n");
-    fprintf(stderr, "\t -o cpu[,cpu...] pure reader cpu list\n");
+    fprintf(stderr, "\t-h print this msg\n");
+    fprintf(stderr, "\t-r reader/writer log ratio, default: 6 (2^(6)-1 readers per writer)\n");
+    fprintf(stderr, "\t-o cpu[,cpu...] pure reader cpu list\n");
 #ifndef TBB_LOOPS_BEFORE_YIELD_HARDCODED
-    fprintf(stderr, "\t -y loops_before_yield\n");
+    fprintf(stderr, "\t-y loops_before_yield\n");
 #endif
 }
 
