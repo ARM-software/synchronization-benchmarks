@@ -240,64 +240,63 @@ void tbb_init_locks (unsigned long *lock, int * cpulist, unsigned long threads) 
     Bit 1 = request by a writer to acquire lock (hint to readers to wait)
     Bit 2..N = number of readers holding lock */
 typedef intptr_t state_t;
-state_t state;
 
 static inline state_t CAS(state_t *s, state_t new_val, state_t old_val) {
    return (state_t)__TBB_CompareAndSwapW(s, new_val, old_val);
 }
 
-static inline void internal_acquire_writer(unsigned long t) {
+static inline void internal_acquire_writer(state_t * pstate, unsigned long t) {
     int32_t count;
-    DBG("init [%ld]: 0x%lx\n", t, state);
+    DBG("init [%ld]: 0x%lx\n", t, *pstate);
     for(count = 1;;atomic_backoff__pause(&count)) {
-        state_t s = *(volatile state_t *) &state;
+        state_t s = *(volatile state_t *) pstate;
         if( !(s & BUSY) ) { // no readers, no writers
-            if( CAS(&state, WRITER, state)==s ) {
+            if( CAS(pstate, WRITER, s)==s ) {
                 break; // successfully stored writer flag
             }
             count = 1; // we could be very close to complete op.
         } else if( !(s & WRITER_PENDING) ) { // no pending writers
-            __TBB_AtomicOR(&state, WRITER_PENDING);
+            __TBB_AtomicOR(pstate, WRITER_PENDING);
         }
     }
-    DBG("final [%ld]: 0x%lx\n", t, state);
+    DBG("final [%ld]: 0x%lx\n", t, *pstate);
 }
 
-static void internal_release_writer(unsigned long t) {
-    DBG("init [%ld]: 0x%lx\n", t, state);
-    __TBB_AtomicAND( &state, READERS );
-    DBG("final [%ld]: 0x%lx\n", t, state);
+static void internal_release_writer(state_t * pstate, unsigned long t) {
+    DBG("init [%ld]: 0x%lx\n", t, *pstate);
+    __TBB_AtomicAND( pstate, READERS );
+    DBG("final [%ld]: 0x%lx\n", t, *pstate);
 }
 
-static inline void internal_acquire_reader(unsigned long t) {
+static inline void internal_acquire_reader(state_t * pstate, unsigned long t) {
     int32_t count;
-    DBG("init [%ld]: 0x%lx\n", t, state);
+    DBG("init [%ld]: 0x%lx\n", t, *pstate);
     for(count = 1;;atomic_backoff__pause(&count)) {
-        state_t s = *(volatile state_t *) &state; // ensure reloading
+        state_t s = *(volatile state_t *) pstate; // ensure reloading
         if( !(s & (WRITER|WRITER_PENDING)) ) { // no writer or write requests
             state_t t = \
-                (state_t)__TBB_FetchAndAddW( &state, (state_t) ONE_READER );
+                (state_t)__TBB_FetchAndAddW( pstate, (state_t) ONE_READER );
             if( !( t&WRITER ))
                 break; // successfully stored increased number of readers
             // writer got there first, undo the increment
-            __TBB_FetchAndAddW( &state, -(state_t)ONE_READER );
+            __TBB_FetchAndAddW( pstate, -(state_t)ONE_READER );
         }
     }
-    __TBB_ASSERT( state & READERS, "invalid state of a read lock: no readers" );
-    DBG("final [%ld]: 0x%lx\n", t, state);
+    __TBB_ASSERT( *pstate & READERS, "invalid state of a read lock: no readers" );
+    DBG("final [%ld]: 0x%lx\n", t, *pstate);
 }
 
-static void internal_release_reader(unsigned long t) {
-    DBG("init [%ld]: 0x%lx\n", t, state);
-    __TBB_FetchAndAddWrelease( &state,-(state_t)ONE_READER);
-    DBG("final [%ld]: 0x%lx\n", t, state);
+static void internal_release_reader(state_t * pstate, unsigned long t) {
+    DBG("init [%ld]: 0x%lx\n", t, *pstate);
+    __TBB_FetchAndAddWrelease(pstate, -(state_t)ONE_READER);
+    DBG("final [%ld]: 0x%lx\n", t, *pstate);
 }
 
 static inline unsigned long
 lock_acquire (unsigned long *lock, unsigned long threadnum) {
     (is_writer(threadnum,1))
-        ? internal_acquire_writer(threadnum)
-        : internal_acquire_reader(threadnum);
+        ? internal_acquire_writer((state_t *) lock, threadnum)
+        : internal_acquire_reader((state_t *) lock, threadnum);
     /* average depth will always = 1 */
     return 1;
 }
@@ -305,8 +304,8 @@ lock_acquire (unsigned long *lock, unsigned long threadnum) {
 static inline void
 lock_release (unsigned long *lock, unsigned long threadnum) {
     (is_writer(threadnum,0))
-        ? internal_release_writer(threadnum)
-        : internal_release_reader(threadnum);
+        ? internal_release_writer((state_t *) lock, threadnum)
+        : internal_release_reader((state_t *) lock, threadnum);
     return;
 }
 #endif /* __TBB_spin_mutex_H */
