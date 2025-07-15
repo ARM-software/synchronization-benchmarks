@@ -82,9 +82,9 @@ static inline void machine_pause (int32_t delay) {
     }
 }
 
-#if defined(USE_LOCAL) || (defined(__x86_64__) && !defined(USE_GCC_BUILTINS))
+#if defined(USE_LOCAL) || !defined(USE_GCC_BUILTINS)
 #ifndef NDEBUG
-#pragma message("Using lockhammer atomics library!!")
+#pragma message("Using local atomics in tbb.h")
 #endif  /* NDEBUG */
 
 /*
@@ -99,13 +99,13 @@ static inline void machine_pause (int32_t delay) {
 #define __TBB_machine_fetchadd8release(P,V) fetchadd64_acquire_release((unsigned long *) P,V)
 
 static inline void __TBB_machine_or(volatile void* operand, uint64_t addend) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile(
             "lock\norq %1,%0"
             : "=m"(*(volatile uint64_t*)operand)
             : "r"(addend), "m"(*(volatile uint64_t*)operand)
             : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #ifndef USE_LSE
     unsigned long old, newval, tmp;
     asm volatile(
@@ -124,7 +124,7 @@ static inline void __TBB_machine_or(volatile void* operand, uint64_t addend) {
     : [val] "+&r" (addend), [ptr] "+Q" (*(unsigned long *)operand)
     : );
 #endif  /* USE_LSE */
-#else
+#elif defined(USE_BUILTIN)
     /* Arch independent implementation */
     for(;;) {
         uintptr_t tmp = *(volatile uintptr_t *)operand;
@@ -135,13 +135,13 @@ static inline void __TBB_machine_or(volatile void* operand, uint64_t addend) {
 }
 
 static inline void __TBB_machine_and(volatile void* operand, uint64_t addend) {
-#if defined(__x86_64__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile(
             "lock\nandq %1,%0"
             : "=m"(*(volatile uint64_t*)operand)
             : "r"(addend), "m"(*(volatile uint64_t*)operand)
             : "memory");
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #ifndef USE_LSE
     unsigned long old, newval, tmp;
     asm volatile(
@@ -161,7 +161,7 @@ static inline void __TBB_machine_and(volatile void* operand, uint64_t addend) {
     : [val] "+&r" (addend), [ptr] "+Q" (*(unsigned long *)operand)
     : );
 #endif  /* USE_LSE */
-#else
+#elif defined(USE_BUILTIN)
     /* Arch independent implementation */
     for(;;) {
         uintptr_t tmp = *(volatile uintptr_t *)operand;
@@ -231,7 +231,7 @@ __TBB_MACHINE_DEFINE_ATOMICS(8, intptr_t)
  */
 #define  __TBB_machine_fetchadd8release(P,V)  __TBB_machine_fetchadd8(P,V)
 
-#endif  /* USE_LOCAL, __x86_64__ && !USE_GCC_BUILTINS */
+#endif  /* USE_LOCAL, !USE_GCC_BUILTINS */
 
 
 /*
