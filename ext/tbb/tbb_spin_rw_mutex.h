@@ -38,25 +38,15 @@
  *      the Intel TBB library. I ported only required things for this
  *      synchronization scheme to work.
  *
- *      - The lockhammer/tbb.h file tries to provide similar __TBB level
- *      abstractions as tbb/include/tbb/tbb_machine.h but it is primitive and
- *      has only definitions needed for this particular scheme.
+ *      - The ext/tbb/include/tbb.h file tries to provide similar __TBB level
+ *      abstractions as tbb/include/tbb/tbb_machine.h but it is limited to only
+ *      the definitions needed for this particular test.  The OS is Linux
+ *      (for sched_yield). The x86-64 (no TSX) primitives are from
+ *      tbb/include/tbb/machine/linux_intel64.h.
  *
- *      - Underlying atomics primitives are from GCC built-ins as configured in
- *      gcc_generic.h file in tbb project for Aarch64. For x86-64 they are
- *      derived from tbb/include/tbb/machine/linux_intel64.h file. The expected
- *      ISA is either x86-64 (no TSX) or Aarch64, 64bit only and the OS is
- *      Linux (for sched_yield).
- *
- *      - For Aarch64, TBB is using GCC generic atomic built-ins as a base. It
- *      does not assume anything about memory model or ISA. So, the
- *      implementation could be suboptimal. We inherit those traits here as
- *      well.
- *
- *      - In lockhammer/tbb.h, there are several macros which allow you to
- *      select which variant of atomics to use. For Aarch64, the default is GCC
- *      built-ins, and for x86-64, the defaults are supplied by the file. These
- *      default choices are similar to the TBB setup.
+ *      - In ext/tbb/include/tbb.h are several macros for the variants of
+ *      atomics to use.  These are coordinated with the lockhammer Makefile
+ *      build-time defines by variant.
  *
  *  Changes from TBB:
  *
