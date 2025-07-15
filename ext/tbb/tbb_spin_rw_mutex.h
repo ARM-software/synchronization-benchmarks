@@ -243,11 +243,17 @@ void tbb_init_locks (unsigned long *lock, int * cpulist, unsigned long threads) 
 
     DBG("On each thread, for every %lu readers there will be 1 writer\n", rw_mask);
 
+    unsigned long num_pure_readers = 0;
     for (unsigned long i = 0; i < threads; ++i) {
-        rw_counts[i].pure_reader = CPU_ISSET(cpulist[i], &pure_reader_cpus) ? 1 : 0;
-        rw_counts[i].c = 0;
+        int is_pure_reader = CPU_ISSET(cpulist[i], &pure_reader_cpus) ? 1 : 0;
+        num_pure_readers += is_pure_reader;
+        rw_counts[i].pure_reader = is_pure_reader;
+        rw_counts[i].c = i; // initialize counter to unique value to avoid crowding
         DBG("\t CPU[%u] is a pure reader %u\n", cpulist[i], rw_counts[i].pure_reader);
     }
+
+    printf("\nrw_mask = %lu (number reads per write on non-pure reader threads)\n", rw_mask);
+    printf("num_pure_readers = %lu\n", num_pure_readers);
 }
 
 //! State of lock
@@ -310,7 +316,8 @@ lock_acquire (unsigned long *lock, unsigned long threadnum) {
     (is_writer(threadnum,1))
         ? internal_acquire_writer((state_t *) lock, threadnum)
         : internal_acquire_reader((state_t *) lock, threadnum);
-    /* average depth will always = 1 */
+    // this depth value of 1 doesn't count multiple readers waiting on a writer
+    // nor does it count multiple writers waiting on a writer
     return 1;
 }
 
