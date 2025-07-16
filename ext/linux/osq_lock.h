@@ -374,6 +374,8 @@ static void osq_parse_args(test_args_t * t, int argc, char** argv) {
     unqueue_retry = DEFAULT_UNQUEUE_RETRY;
     max_sleep_us = MAX_BACKOFF_SLEEP_US;
 
+    osq_lock_parameters.verbose = t->verbose;
+
     /* extended options retrieved after '--' operator */
     while ((i = getopt(argc, argv, "u:s:S:R:D:vh")) != -1)
     {
@@ -432,7 +434,7 @@ static void osq_parse_args(test_args_t * t, int argc, char** argv) {
             fprintf(stderr,
                     "osq_lock additional options after --:\n"
                     "\t[-h print this msg]\n"
-                    "\t[-v copy verbosity from main]\n"
+                    "\t[-v increase verbosity]\n"
                     "\t[-u max spin retries before unqueue, default 2 billion]\n"
                     "\t[-s max unqueue sleep in microseconds, default is 0]\n"
                     "\t[-R specify random seed]\n"
@@ -442,7 +444,8 @@ static void osq_parse_args(test_args_t * t, int argc, char** argv) {
                     "\t[-S i:usecs] for CPUi, use a unqueue-to-acquire interval\n");
             exit(2);
           case 'v':
-            osq_lock_parameters.verbose = t->verbose;
+            osq_lock_parameters.verbose =
+                (osq_lock_parameters.verbose) >= VERBOSE_YES ? VERBOSE_MORE : VERBOSE_YES;
             break;
           default:
             fprintf(stderr, "osq_parse_args: shouldn't get here with i = %d\n", i);
