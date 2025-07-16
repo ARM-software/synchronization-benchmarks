@@ -91,7 +91,7 @@ static inline uint32_t atomic_cmpxchg_acquire32(uint32_t *ptr, uint32_t exp, uin
 	asm volatile ("lock cmpxchgl %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
-		      : "memory");
+		      : "cc", "memory");
 #elif defined(__aarch64__)
 #if defined(USE_LSE)
 	unsigned long tmp;
@@ -135,7 +135,7 @@ static inline uint32_t atomic_cmpxchg_release32(uint32_t *ptr, uint32_t exp, uin
 	asm volatile ("lock cmpxchgl %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
-		      : "memory");
+		      : "cc", "memory");
 #elif defined(__aarch64__)
 #if defined(USE_LSE)
 	unsigned long tmp;
@@ -179,7 +179,7 @@ static inline uint32_t atomic_cmpxchg_relaxed32(uint32_t *ptr, uint32_t exp, uin
 	asm volatile ("lock cmpxchgl %2, %1\n"
 		      : "=a" (old), "+m" (*(ptr))
 		      : "r" (val), "0" (exp)
-		      : "memory");
+		      : "cc", "memory");
 #elif defined(__aarch64__)
 #if defined(USE_LSE)
 	unsigned long tmp;
@@ -285,6 +285,10 @@ atomic_fetch_or_acquire32(uint32_t i, atomic_t *v)
 
 static inline uint16_t xchg_release16(uint16_t *ptr, uint16_t val) {
 #if defined(__x86_64__)
+	// XXX: Even though the xchgw instruction does not set flags, "cc" is
+	// in the clobber list because the __xchg_op macro, also used by
+	// xadd(), has "cc" in it.  And there isn't a way to tell the compiler
+	// that "cc" is not clobbered if each asm() implies "cc" is clobbered.
 	asm volatile ("xchgw %w0, %1\n"
 		      : "+r" (val), "+m" (*(ptr))
 		      : : "memory", "cc");
