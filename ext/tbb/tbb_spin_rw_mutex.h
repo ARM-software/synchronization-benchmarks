@@ -185,7 +185,7 @@ void tbb_parse_args(test_args_t * t, int argc, char** argv) {
 
     log2_ratio = 6;
 
-    while ((i = getopt(argc, argv, "hr:o:y:")) != -1)
+    while ((i = getopt(argc, argv, "hr:o:y:v")) != -1)
     {
         switch (i) {
           case 'r':
@@ -225,6 +225,10 @@ void tbb_parse_args(test_args_t * t, int argc, char** argv) {
             }
             break;
 #endif
+          case 'v':
+            tbb_spin_rw_mutex_parameters.verbose =
+                (tbb_spin_rw_mutex_parameters.verbose >= VERBOSE_YES) ? VERBOSE_MORE : VERBOSE_YES;
+            break;
           case 'h':
             tbb_print_usage();
             exit(0);
@@ -252,8 +256,10 @@ void tbb_init_locks (unsigned long *lock, int * cpulist, unsigned long threads) 
         DBG("\t CPU[%u] is a pure reader %u\n", cpulist[i], rw_counts[i].pure_reader);
     }
 
-    printf("\nrw_mask = %lu (number reads per write on non-pure reader threads)\n", rw_mask);
-    printf("num_pure_readers = %lu\n", num_pure_readers);
+    if (tbb_spin_rw_mutex_parameters.verbose >= VERBOSE_YES) {
+        printf("\nrw_mask = %lu (number reads per write on non-pure reader threads)\n", rw_mask);
+        printf("num_pure_readers = %lu\n", num_pure_readers);
+    }
 }
 
 //! State of lock
