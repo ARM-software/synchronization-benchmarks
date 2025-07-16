@@ -94,10 +94,10 @@ static inline void prefetch64 (unsigned long *ptr) {
 static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsigned long addend) {
     unsigned long old;  // the value at ptr before the atomic add
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock xaddq %[val], %[ptr]"           // "lock xadd [%[ptr]], %[val]"
             : [val] "=&r" (old), [ptr] "+m" (*ptr)
-            : "r[val]" (addend)
+            : "[val]" (addend)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("ldaddal %[val], %[old], %[ptr]"
@@ -127,10 +127,10 @@ static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsi
 static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned long addend) {
     unsigned long old;  // the value at ptr before the atomic add
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock xaddq %[val], %[ptr]"           // "lock xadd [%[ptr]], %[val]"
             : [val] "=&r" (old), [ptr] "+m" (*ptr)
-            : "r[val]" (addend)
+            : "[val]" (addend)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("ldadda %[val], %[old], %[ptr]"
@@ -160,11 +160,11 @@ static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned lon
 static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned long addend) {
     unsigned long old;  // the value at ptr before the atomic add
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     // XXX: there is some issue with this code with clang
     asm volatile ("lock xaddq %[val], %[ptr]"           // "lock xadd [%[ptr]], %[val]"
             : [val] "=&r" (old), [ptr] "+m" (*ptr)
-            : "r[val]" (addend)
+            : "[val]" (addend)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("ldaddl %[val], %[old], %[ptr]"
@@ -194,10 +194,10 @@ static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned lon
 static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long addend) {
     unsigned long old;  // the value at ptr before the atomic add
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock xaddq %[val], %[ptr]"           // "lock xadd [%[ptr]], %[val]"
             : [val] "=&r" (old), [ptr] "+m" (*ptr)
-            : "r[val]" (addend)
+            : "[val]" (addend)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("ldadd %[val], %[old], %[ptr]"
@@ -228,11 +228,11 @@ static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long addend
 static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long addend) {
     unsigned long old;  // the value at ptr before the atomic subtract
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     addend = (unsigned long) (-(long) addend);
     asm volatile ("lock xaddq %[val], %[ptr]"           // "lock xadd [%[ptr]], %[val]"
             : [val] "=&r" (old), [ptr] "+m" (*ptr)
-            : "r[val]" (addend)
+            : "[val]" (addend)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     addend = (unsigned long) (-(long) addend);
@@ -263,11 +263,11 @@ static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long addend
 static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
     unsigned long old;
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("xchgq %[val], %[ptr]"
             : [val] "=&r" (old), [ptr] "+m" (*ptr)
-            : "r[val]" (val)
-            : "memory", "cc");
+            : "[val]" (val)
+            : "memory", "cc");  // XXX: why is "cc" in this clobber list?
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("swpal %[val], %[old], %[ptr]"
             : [old] "=r" (old), [ptr] "+Q" (*ptr)
@@ -294,15 +294,15 @@ static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
 static inline unsigned long cas64 (unsigned long *ptr, unsigned long newval, unsigned long expected) {
     unsigned long old;
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock cmpxchgq %[newval], %[ptr]"   // if RAX == *ptr, then *ptr = newval; else RAX = *ptr
             : [exp] "=a" (old), [ptr] "+m" (*ptr)     // old will have the value of *ptr before the compare
-            : [newval] "r" (newval), "r[exp]" (expected)
+            : [newval] "r" (newval), "[exp]" (expected)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("cas %[exp], %[newval], %[ptr]"     // if *ptr == exp, *ptr = newval; return *ptr in 'old' always
             : [exp] "=&r" (old), [ptr] "+Q" (*ptr)
-            : "r[exp]" (expected), [newval] "r" (newval)
+            : "[exp]" (expected), [newval] "r" (newval)
             : "memory");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && !defined(USE_LSE)
     unsigned long tmp;
@@ -329,15 +329,15 @@ static inline unsigned long cas64 (unsigned long *ptr, unsigned long newval, uns
 static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val, unsigned long exp) {
     unsigned long old;
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock cmpxchgq %[newval], %[ptr]"   // if RAX == *ptr, then *ptr = newval; else RAX = *ptr
             : [exp] "=a" (old), [ptr] "+m" (*ptr)     // old will have the value of *ptr before the compare
-            : [newval] "r" (val), "r[exp]" (exp)
+            : [newval] "r" (val), "[exp]" (exp)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("casa %[exp], %[newval], %[ptr]"    // if *ptr == exp, *ptr = newval; return *ptr in 'old' always
             : [exp] "=&r" (old), [ptr] "+Q" (*ptr)
-            : "r[exp]" (exp), [newval] "r" (val)
+            : "[exp]" (exp), [newval] "r" (val)
             : "memory");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && !defined(USE_LSE)
     unsigned long tmp;
@@ -364,15 +364,15 @@ static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val
 static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val, unsigned long exp) {
     unsigned long old;
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock cmpxchgq %[newval], %[ptr]"   // if RAX == *ptr, then *ptr = newval; else RAX = *ptr
             : [exp] "=a" (old), [ptr] "+m" (*ptr)     // old will have the value of *ptr before the compare
-            : [newval] "r" (val), "r[exp]" (exp)
+            : [newval] "r" (val), "[exp]" (exp)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("casl %[exp], %[newval], %[ptr]"    // if *ptr == exp, *ptr = newval; return *ptr in 'old' always
             : [exp] "=&r" (old), [ptr] "+Q" (*ptr)
-            : "r[exp]" (exp), [newval] "r" (val)
+            : "[exp]" (exp), [newval] "r" (val)
             : "memory");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && !defined(USE_LSE)
     unsigned long tmp;
@@ -399,15 +399,15 @@ static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val
 static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned long val, unsigned long exp) {
     unsigned long old;
 
-#if defined(__x86_64__) && !defined(USE_BUILTIN) && !defined(__clang__)
+#if defined(__x86_64__) && !defined(USE_BUILTIN)
     asm volatile ("lock cmpxchgq %[newval], %[ptr]"   // if RAX == *ptr, then *ptr = newval; else RAX = *ptr
             : [exp] "=a" (old), [ptr] "+m" (*ptr)     // old will have the value of *ptr before the compare
-            : [newval] "r" (val), "r[exp]" (exp)
+            : [newval] "r" (val), "[exp]" (exp)
             : "memory", "cc");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && defined(USE_LSE)
     asm volatile ("casal %[exp], %[newval], %[ptr]"   // if *ptr == exp, *ptr = newval; return *ptr
             : [exp] "=&r" (old), [ptr] "+Q" (*ptr)
-            : "r[exp]" (exp), [newval] "r" (val)
+            : "[exp]" (exp), [newval] "r" (val)
             : "memory");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN) && !defined(USE_LSE)
     unsigned long tmp;
