@@ -104,7 +104,7 @@ static inline void __TBB_machine_or(volatile void* operand, uint64_t addend) {
             "lock\norq %1,%0"
             : "=m"(*(volatile uint64_t*)operand)
             : "r"(addend), "m"(*(volatile uint64_t*)operand)
-            : "memory");
+            : "cc", "memory");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #ifndef USE_LSE
     unsigned long old, newval, tmp;
@@ -140,7 +140,7 @@ static inline void __TBB_machine_and(volatile void* operand, uint64_t addend) {
             "lock\nandq %1,%0"
             : "=m"(*(volatile uint64_t*)operand)
             : "r"(addend), "m"(*(volatile uint64_t*)operand)
-            : "memory");
+            : "cc", "memory");
 #elif defined(__aarch64__) && !defined(USE_BUILTIN)
 #ifndef USE_LSE
     unsigned long old, newval, tmp;
