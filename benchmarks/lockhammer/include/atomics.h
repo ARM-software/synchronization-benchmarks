@@ -129,6 +129,11 @@ static inline unsigned long fetchadd64_acquire_release (unsigned long *ptr, unsi
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval), [ptr] "+Q" (*ptr)
             : [val] "r" (addend)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN)
+    asm volatile("amoadd.d.aqrl  %[old], %[val], %[ptr]"
+                : [old] "=&r" (old), [ptr] "+A" (*(ptr))
+                : [val] "r" (addend)
+                : "memory");
 #else
     old = __atomic_fetch_add(ptr, addend, __ATOMIC_ACQ_REL);
 #endif
@@ -162,6 +167,11 @@ static inline unsigned long fetchadd64_acquire (unsigned long *ptr, unsigned lon
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval), [ptr] "+Q" (*ptr)
             : [val] "r" (addend)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN)
+    asm volatile("amoadd.d.aq  %[old], %[val], %[ptr]"
+                : [old] "=&r" (old), [ptr] "+A" (*(ptr))
+                : [val] "r" (addend)
+                : "memory");
 #else
     old = __atomic_fetch_add(ptr, addend, __ATOMIC_ACQUIRE);
 #endif
@@ -196,6 +206,11 @@ static inline unsigned long fetchadd64_release (unsigned long *ptr, unsigned lon
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval), [ptr] "+Q" (*ptr)
             : [val] "r" (addend)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN)
+    asm volatile("amoadd.d.rl  %[old], %[val], %[ptr]"
+                : [old] "=&r" (old), [ptr] "+A" (*(ptr))
+                : [val] "r" (addend)
+                : "memory");
 #else
     old = __atomic_fetch_add(ptr, addend, __ATOMIC_RELEASE);
 #endif
@@ -229,6 +244,11 @@ static inline unsigned long fetchadd64 (unsigned long *ptr, unsigned long addend
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval), [ptr] "+Q" (*ptr)
             : [val] "r" (addend)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN)
+    asm volatile("amoadd.d  %[old], %[val], %[ptr]"
+                : [old] "=&r" (old), [ptr] "+A" (*(ptr))
+                : [val] "r" (addend)
+                : "memory");	
 #else
     old = __atomic_fetch_add(ptr, addend, __ATOMIC_RELAXED);
 #endif
@@ -265,6 +285,12 @@ static inline unsigned long fetchsub64 (unsigned long *ptr, unsigned long addend
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [newval] "=&r" (newval), [ptr] "+Q" (*ptr)
             : [val] "r" (addend)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN)
+	addend = (unsigned long) (-(long) addend);
+    asm volatile("amoadd.d  %[old], %[val], %[ptr]"
+                : [old] "=&r" (old), [ptr] "+A" (*(ptr))
+                : [val] "r" (addend)
+                : "memory");
 #else
     old = __atomic_fetch_sub(ptr, addend, __ATOMIC_RELAXED);
 #endif
@@ -296,6 +322,11 @@ static inline unsigned long swap64 (unsigned long *ptr, unsigned long val) {
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [ptr] "+Q" (*ptr)
             : [val] "r" (val)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN)
+	asm volatile("amoswap.d.aqrl  %[old], %[val], %[ptr]"
+				: [old] "=&r" (old), [ptr] "+A" (*(ptr))
+				: [val] "r" (val)
+				: "memory");
 #else
     old = __atomic_exchange_n(ptr, val, __ATOMIC_ACQ_REL);
 #endif
@@ -330,6 +361,22 @@ static inline unsigned long cas64 (unsigned long *ptr, unsigned long newval, uns
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [ptr] "+Q" (*ptr)
             : [exp] "r" (expected), [val] "r" (newval)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && !defined(__riscv_zacas)
+	unsigned long tmp;
+
+    asm volatile (  "1: lr.d %[old], %[ptr]\n"
+                    "   bne %[old], %[exp], 2f\n"
+                    "   sc.d %[tmp], %[val], %[ptr]\n"
+                    "   bnez %[tmp], 1b\n"
+                    "2:"
+        		: [old] "=&r" (old), [tmp] "=&r" (tmp), [ptr] "+A" (*(ptr))
+        		: [exp] "r" (expected), [val] "r" (newval)
+        		: "memory");	
+#elif defined(__riscv) && !defined(USE_BUILTIN) && defined(__riscv_zacas)
+    asm volatile("amocas.d  %[exp], %[val], %[ptr]"
+	            : [exp] "=&r" (old), [ptr] "+A" (*(ptr))
+    	        : "r[exp]" (expected), [val] "r" (newval)
+        	    : "memory");
 #else
     old = expected;
     __atomic_compare_exchange_n(ptr, &old, expected, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
@@ -365,6 +412,22 @@ static inline unsigned long cas64_acquire (unsigned long *ptr, unsigned long val
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [ptr] "+Q" (*ptr)
             : [exp] "r" (exp), [val] "r" (val)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && !defined(__riscv_zacas)
+    unsigned long tmp;
+
+    asm volatile (  "1: lr.d.aq %[old], %[ptr]\n"
+                    "   bne %[old], %[exp], 2f\n"
+                    "   sc.d %[tmp], %[newval], %[ptr]\n"
+                    "   bnez %[tmp], 1b\n"
+                    "2:"
+                : [old] "=&r" (old), [tmp] "=&r" (tmp), [ptr] "+A" (*(ptr))
+                : [exp] "r" (exp), [newval] "r" (val)
+                : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && defined(__riscv_zacas)
+    asm volatile("amocas.d  %[exp], %[val], %[ptr]"
+                : [exp] "=&r" (old), [ptr] "+A" (*(ptr))
+                : "r[exp]" (exp), [val] "r" (val)
+                : "memory");
 #else
     old = exp;
     __atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE);
@@ -400,6 +463,22 @@ static inline unsigned long cas64_release (unsigned long *ptr, unsigned long val
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [ptr] "+Q" (*ptr)
             : [exp] "r" (exp), [val] "r" (val)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && !defined(__riscv_zacas)
+    unsigned long tmp;
+
+    asm volatile (  "1: lr.d %[old], %[ptr]\n"
+                    "   bne %[old], %[exp], 2f\n"
+                    "   sc.d.rl %[tmp], %[val], %[ptr]\n"
+                    "   bnez %[tmp], 1b\n"
+                    "2:"
+                : [old] "=&r" (old), [tmp] "=&r" (tmp), [ptr] "+A" (*(ptr))
+                : [exp] "r" (exp), [val] "r" (val)
+                : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && defined(__riscv_zacas)
+    asm volatile("amocas.d.rl  %[exp], %[val], %[ptr]"
+                : [exp] "=&r" (old), [ptr] "+A" (*(ptr))
+                : "r[exp]" (exp), [val] "r" (val)
+                : "memory");
 #else
     old = exp;
     __atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED);  // XXX: is relaxed for failure OK?
@@ -435,6 +514,22 @@ static inline unsigned long cas64_acquire_release (unsigned long *ptr, unsigned 
             : [tmp] "=&r" (tmp), [old] "=&r" (old), [ptr] "+Q" (*ptr)
             : [exp] "r" (exp), [val] "r" (val)
             : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && !defined(__riscv_zacas)
+    unsigned long tmp;
+
+    asm volatile (  "1: lr.d.aq %[old], %[ptr]\n"
+                    "   bne %[old], %[exp], 2f\n"
+                    "   sc.d.rl %[tmp], %[val], %[ptr]\n"
+                    "   bnez %[tmp], 1b\n"
+                    "2:"
+                : [old] "=&r" (old), [tmp] "=&r" (tmp), [ptr] "+A" (*(ptr))
+                : [exp] "r" (exp), [val] "r" (val)
+                : "memory");
+#elif defined(__riscv) && !defined(USE_BUILTIN) && defined(__riscv_zacas)
+    asm volatile("amocas.d.aqrl  %[exp], %[val], %[ptr]"
+                : [exp] "=&r" (old), [ptr] "+A" (*(ptr))
+                : "r[exp]" (exp), [val] "r" (val)
+                : "memory");
 #else
     old = exp;
     __atomic_compare_exchange_n(ptr, &old, val, true, __ATOMIC_ACQ_REL,

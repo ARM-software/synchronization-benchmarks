@@ -200,6 +200,19 @@ get_raw_counter(void) {
 #endif
 
 
+#ifdef __riscv
+static inline uint64_t __attribute__((always_inline))
+get_raw_counter(void) {
+	uint64_t t;
+    asm volatile(
+        "fence.i\n"
+        "fence r, r\n"
+        "rdtime %0"
+        : "=r"(t) : :);
+	return t;
+}
+#endif
+
 static inline void __attribute__((always_inline))
 timer_reset_counter()
 {
@@ -207,6 +220,12 @@ timer_reset_counter()
     __asm__ __volatile__ ("isb; mrs %0, cntvct_el0" : "=r" (prev_tsc));
 #elif __x86_64__
     prev_tsc = rdtscp();
+#elif __riscv
+    asm volatile(
+        "fence.i\,"
+		"fence r, r\n"
+		"rdtime %0" 
+		: "=r"(prev_tsc) : :);	
 #endif
 }
 
@@ -221,7 +240,14 @@ timer_get_counter()
         __asm__ __volatile__ ("isb; mrs %0, cntvct_el0" : "=r" (counter_value));
 #elif __x86_64__
     uint64_t counter_value = rdtscp();    // assume constant_tsc
-#endif
+#elif __riscv
+	uint64_t counter_value;
+    asm volatile(
+        "fence.i\n"
+        "fence r, r\n"
+        "rdtime %0"
+        : "=r"(counter_value) : :);
+#endif	
     return counter_value;
 }
 
@@ -236,6 +262,14 @@ timer_get_counter_start()
         __asm__ __volatile__ ("dsb ish; isb; mrs %0, cntvct_el0" : "=r" (counter_value));
 #elif __x86_64__
     uint64_t counter_value = rdtscp_start();    // assume constant_tsc
+#elif __riscv
+	uint64_t counter_value;
+    asm volatile(
+        "fence rw, rw\n"
+        "fence.i\n"
+        "fence r,r\n"
+        "rdtime %0"
+        : "=r"(counter_value) : :);
 #endif
     return counter_value;
 }
@@ -252,6 +286,15 @@ timer_get_counter_end()
         __asm__ __volatile__ ("isb; mrs %0, cntvct_el0; isb" : "=r" (counter_value));
 #elif __x86_64__
     uint64_t counter_value = rdtscp_end();    // assume constant_tsc
+#elif __riscv
+	uint64_t counter_value;
+    asm volatile(
+        "fence.i\n"
+        "fence r, r\n"
+        "rdtime %0\n"
+        "fence.i\n"
+		"fence r, r"
+        : "=r"(counter_value) : :);
 #endif
     return counter_value;
 }
@@ -284,6 +327,10 @@ timer_get_timer_freq(void)
     // Use --timer-frequency flag to override the frequency value.
     // Use --estimate-timer-frequency to measure over a longer duration.
 
+    const struct timeval measurement_duration = { .tv_sec = 0, .tv_usec = 100000 };
+
+    hwtimer_frequency = estimate_hwclock_freq(1, 0, measurement_duration);
+#elif __riscv   
     const struct timeval measurement_duration = { .tv_sec = 0, .tv_usec = 100000 };
 
     hwtimer_frequency = estimate_hwclock_freq(1, 0, measurement_duration);
