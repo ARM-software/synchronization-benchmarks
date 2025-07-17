@@ -25,6 +25,13 @@
 # make alli [variant variables]
 #     - generates preprocessed .i for all tests of the configuration variant of the set of variables
 #
+# make alldump [variant variables]
+# make alldumps [variant variables]
+#     - generates objdump disassembly
+#
+# make alls [variant variables]
+#     - generates assembly .s for all tests of the configuration variant of the set of variables
+#
 # make clean [variant variables]
 #     - remove the executables, binaries, and .i from the build directory of the variant
 #
@@ -34,8 +41,15 @@
 # make allvariants
 #     - builds all binaries for all variant combinations
 #
+# make alldumpvariants
+# make alldumpsvariants
+#     - generates objdump disassembly or all variant combinations
+#
 # make allivariants
 #     - generates preprocessed .i for all variant combinations
+#
+# make allsvariants
+#     - generates assembly .s for all variant combinations
 #
 # make cleanallvariants
 #     - removes executables/binaries and .i of all variant builds
@@ -112,13 +126,6 @@
 # TAG=tag
 #     add ".$tag" to the build dir name
 #
-
-ifeq ($(V),1)
-empty :=
-hide = $(empty)
-else
-hide = @
-endif
 
 # can use 'make CC=clang LD=clang' as well
 LD = gcc
@@ -296,6 +303,21 @@ LOCK_CFLAGS+=-DUSE_SMP_COND_LOAD_RELAXED
 endif
 
 
+# objdump
+
+OBJDUMP = objdump
+OBJDUMP_FLAGS = -d -w
+
+ifeq ($(TARGET_ARCH),x86_64)
+OBJDUMP_FLAGS += -M intel
+endif
+
+ifeq ($(V),1)
+empty :=
+hide = $(empty)
+else
+hide = @
+endif
 
 # ========================================================
 # output directory name construction
@@ -376,12 +398,14 @@ ALL_VARIANTS = \
 # phony targets
 
 BUILD_ALL_VARIANTS = $(addprefix all.,$(ALL_VARIANTS))
+BUILD_ALLDUMPS_VARIANTS = $(addprefix alldumps.,$(ALL_VARIANTS))
 BUILD_ALLI_VARIANTS = $(addprefix alli.,$(ALL_VARIANTS))
+BUILD_ALLS_VARIANTS = $(addprefix alls.,$(ALL_VARIANTS))
 CLEAN_ALL_VARIANTS = $(addprefix clean.,$(ALL_VARIANTS))
 CLOBBER_ALL_VARIANTS = $(addprefix clobber.,$(ALL_VARIANTS))
 
-ALL_PHONY_VARIANTS = $(BUILD_ALL_VARIANTS) $(BUILD_ALLI_VARIANTS) $(CLEAN_ALL_VARIANTS) $(CLOBBER_ALL_VARIANTS)
-ALL_PHONY_TARGETS = $(ALL_PHONY_VARIANTS) $(ALL_CLEAN_TARGETS) info all allvariants allivariants Makefile info_variants
+ALL_PHONY_VARIANTS = $(BUILD_ALL_VARIANTS) $(BUILD_ALLDUMPS_VARIANTS) $(BUILD_ALLI_VARIANTS) $(BUILD_ALLS_VARIANTS) $(CLEAN_ALL_VARIANTS) $(CLOBBER_ALL_VARIANTS)
+ALL_PHONY_TARGETS = $(ALL_PHONY_VARIANTS) $(ALL_CLEAN_TARGETS) info all allvariants alldumpvariants alldumpsvariants allivariants allsvariants Makefile info_variants
 ALL_CLEAN_TARGETS = $(CLEAN_ALL_VARIANTS) $(CLOBBER_ALL_VARIANTS) clean clobber cleanallvariants clobberallvariants
 
 # ---------------------
@@ -389,9 +413,12 @@ ALL_CLEAN_TARGETS = $(CLEAN_ALL_VARIANTS) $(CLOBBER_ALL_VARIANTS) clean clobber 
 
 ALL_BINARIES = $(addprefix $(BUILD_DIR)/,$(TEST_TARGETS))
 
+ALL_BINARIES_DUMPS = $(addsuffix .dump,$(ALL_BINARIES))
+
 ALL_OBJS = $(HARNESS_OBJS) $(LOCK_OBJS)
 ALL_DEPS = $(HARNESS_DEPS) $(LOCK_DEPS)
 ALL_I = $(HARNESS_I) $(LOCK_I)
+ALL_S = $(HARNESS_S) $(LOCK_S)
 
 # ---------------------
 # source file lists
@@ -402,6 +429,7 @@ HARNESS_C_SRC = src/lockhammer.c src/alloc.c src/args.c src/report.c src/cpufreq
 
 # lock code is inlined into measure.c using the -DATOMIC_TEST variable passed in as a compiler flag.
 # TODO: separate actual lock code from measure.c; also, LOCK_C_SRC must be just 1 file
+# TODO: measure.c is explicitly referenced throughout the recipes below for readability
 LOCK_C_SRC = src/measure.c
 
 C_SRC = $(HARNESS_C_SRC) $(LOCK_C_SRC)
@@ -409,14 +437,18 @@ C_SRC = $(HARNESS_C_SRC) $(LOCK_C_SRC)
 # ---------------------
 # compute the object names
 
+# harness .c files --> harness .{o,d,i,s} files
 HARNESS_OBJS = $(addprefix $(BUILD_DIR)/,$(notdir $(HARNESS_C_SRC:%.c=%.o)))
 HARNESS_DEPS = $(addprefix $(BUILD_DIR)/,$(notdir $(HARNESS_C_SRC:%.c=%.d)))
 HARNESS_I = $(addprefix $(BUILD_DIR)/,$(notdir $(HARNESS_C_SRC:%.c=%.i)))
+HARNESS_S = $(addprefix $(BUILD_DIR)/,$(notdir $(HARNESS_C_SRC:%.c=%.s)))
 
+# measure.c file --> measure.$test_target.{o,d,i,s}
 LOCK_BASENAME = $(basename $(notdir $(LOCK_C_SRC)))
 LOCK_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix .o,$(addprefix $(LOCK_BASENAME).,$(TEST_TARGETS))))
 LOCK_DEPS = $(addprefix $(BUILD_DIR)/,$(addsuffix .d,$(addprefix $(LOCK_BASENAME).,$(TEST_TARGETS))))
 LOCK_I = $(addprefix $(BUILD_DIR)/,$(addsuffix .i,$(addprefix $(LOCK_BASENAME).,$(TEST_TARGETS))))
+LOCK_S = $(addprefix $(BUILD_DIR)/,$(addsuffix .s,$(addprefix $(LOCK_BASENAME).,$(TEST_TARGETS))))
 
 
 # ---------------------
@@ -469,7 +501,7 @@ $(info BUILD_DIR = $(BUILD_DIR))                  # output build-dir
 # vartargs:  create build*, clean*, clobber* targets from 1st parameter.
 # e.g. $(call vartargs,builtin_0.lse_0) ->  build.builtin_0.lse_0 clean.builtin_0.lse_0 clobber.builtin_0.lse_0
 
-vartargs = $(addsuffix $1, all. alli. clean. clobber.)
+vartargs = $(addsuffix $1, all. alldumps. alli. alls. clean. clobber.)
 
 # targvar:  extract the first word from the argument.  It will be used for the nested make target.
 # e.g. $(call vartargs,all.builtin_0.lse_0) ---> all, for use as "make all"
@@ -498,20 +530,30 @@ all: $(ALL_BINARIES)
 
 alli: $(ALL_I)
 
+alls: $(ALL_S)
+
+alldump alldumps: $(ALL_BINARIES_DUMPS)
+
 clean:
-	@echo [CLEAN] all binaries, objects, preprocessed files in $(BUILD_DIR)
-	$(hide) rm -f $(ALL_BINARIES) $(ALL_OBJS) $(ALL_I)
+	$(info [CLEAN]   all binaries, objects, preprocessed files in $(BUILD_DIR))
+	$(hide) rm -f $(ALL_BINARIES) $(ALL_OBJS) $(ALL_BINARIES_DUMPS) $(ALL_I) $(ALL_S)
 
 clobber: clean
-	@echo [CLOBBER] remove all dep files in $(BUILD_DIR) and the directory itself
+	$(info [CLOBBER] remove all dep files in $(BUILD_DIR) and the directory itself)
 	$(hide) rm -f $(ALL_DEPS)
 	$(hide) rm -rf $(BUILD_DIR)
 
 allvariants: $(BUILD_ALL_VARIANTS)
 #	$(info BUILD_ALL_VARIANTS=$(BUILD_ALL_VARIANTS))
 
+alldumpvariants alldumpsvariants: $(BUILD_ALLDUMPS_VARIANTS)
+#	$(info BUILD_ALLDUMPS_VARIANTS=$(BUILD_ALLDUMPS_VARIANTS))
+
 allivariants: $(BUILD_ALLI_VARIANTS)
 #	$(info BUILD_ALLI_VARIANTS=$(BUILD_ALLI_VARIANTS))
+
+allsvariants: $(BUILD_ALLS_VARIANTS)
+#	$(info BUILD_ALLS_VARIANTS=$(BUILD_ALLS_VARIANTS))
 
 cleanallvariants: $(CLEAN_ALL_VARIANTS)
 
@@ -541,8 +583,8 @@ endif
 define TEMPLATE
 #$$(info $$(call vartargs,builtin_$(1).lse_$(2).cond_load_$(3).relax_$(4)))
 $$(call vartargs,builtin_$(1).lse_$(2).cond_load_$(3).relax_$(4)):
-	@echo $$(MAKE) $$(call targvar,$$@) USE_BUILTIN=$(1) USE_LSE=$(2) USE_SMP_COND_LOAD_RELAXED=$(3) USE_RELAX=$(4)
-	     @$$(MAKE) $$(call targvar,$$@) USE_BUILTIN=$(1) USE_LSE=$(2) USE_SMP_COND_LOAD_RELAXED=$(3) USE_RELAX=$(4)
+	$$(info $$(MAKE) $$(call targvar,$$@) USE_BUILTIN=$(1) USE_LSE=$(2) USE_SMP_COND_LOAD_RELAXED=$(3) USE_RELAX=$(4))
+	@$$(MAKE) $$(call targvar,$$@) USE_BUILTIN=$(1) USE_LSE=$(2) USE_SMP_COND_LOAD_RELAXED=$(3) USE_RELAX=$(4)
 endef
 
 $(foreach BUILTIN,$(BUILTIN_VARIANTS), \
@@ -558,176 +600,146 @@ $(BUILD_DIR):
 	$(hide) mkdir -p $@
 
 
+# ----------------------------------------------------------------------
+# prompts for recipes
+
+# Important: there are explicit spaces
+#        +-- up to this column
+#        v
+
+define CCC_PROMPT
+[CC -c]   
+endef
+
+define CCMM_PROMPT
+[CC -MM]  
+endef
+
+define CCE_PROMPT
+[CC -E]   
+endef
+
+define CCS_PROMPT
+[CC -S]   
+endef
+
+define OBJDUMP_PROMPT
+[OBJDUMP] 
+endef
+
+define LD_PROMPT
+[LD]      
+endef
+
+# ----------------------------------------------------------------------
+# recipes for building measure object files of specific locks in ext/...
+
+# External specific lock recipe template:
+# $(eval $(call EXT_LOCK_TEMPLATE,$(TEST_NAME),$(TEST_HEADER),$(TEST_FLAGS)))
+
+define EXT_LOCK_TEMPLATE
+
+# measure object depfiles (.d) for specific locks
+$(BUILD_DIR)/measure.lh_$(1).d: $(2) src/measure.c | $(BUILD_DIR)
+	$$(info $(CCMM_PROMPT)$$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$$<\" -DTEST_NAME=$(1) src/measure.c -MM -MT '$$(@:.d=.o) $$(@:.d=.i) $$@' -o $$@ $(3)
+
+# measure objects (.o) for specific external locks, i.e. $(BUILD_DIR)/measure.lock_name.o
+$(BUILD_DIR)/measure.lh_$(1).o: $(2) | $$(BUILD_DIR)
+	$$(info $(CCC_PROMPT)$$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$$<\" -DTEST_NAME=$(1) src/measure.c -c -o $$@ $(3)
+
+# preprocessed output (.i) for specific locks
+$(BUILD_DIR)/measure.lh_$(1).i: $(2) src/measure.c | $$(BUILD_DIR)
+	$$(info $(CCE_PROMPT)$$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$$<\" -DTEST_NAME=$(1) src/measure.c -E -o $$@ $(3)
+
+# assembly output (.s) for specific locks
+$(BUILD_DIR)/measure.lh_$(1).s: $(2) src/measure.c | $$(BUILD_DIR)
+	$$(info $(CCS_PROMPT)$$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$$<\" -DTEST_NAME=$(1) src/measure.c -S -o $$@ $(3)
+
+endef
+
+# Instantiated recipes for specific locks
+
+
+#$(info $(call EXT_LOCK_TEMPLATE,event_mutex,                ../../ext/mysql/event_mutex.h,          $(INCLUDE_MYSQL)))
+
+$(eval $(call EXT_LOCK_TEMPLATE,event_mutex,                ../../ext/mysql/event_mutex.h,          $(INCLUDE_MYSQL)))
+$(eval $(call EXT_LOCK_TEMPLATE,cas_event_mutex,            ../../ext/mysql/cas_event_mutex.h,      $(INCLUDE_MYSQL)))
+
+$(eval $(call EXT_LOCK_TEMPLATE,ticket_spinlock,            ../../ext/linux/ticket_spinlock.h,      $(INCLUDE_LINUX)))
+$(eval $(call EXT_LOCK_TEMPLATE,hybrid_spinlock,            ../../ext/linux/hybrid_spinlock.h,      $(INCLUDE_LINUX)))
+$(eval $(call EXT_LOCK_TEMPLATE,hybrid_spinlock_fastdequeue,../../ext/linux/hybrid_spinlock_fastdequeue.h,$(INCLUDE_LINUX)))
+$(eval $(call EXT_LOCK_TEMPLATE,osq_lock,                   ../../ext/linux/osq_lock.h,             $(INCLUDE_LINUX) -DOSQ_LOCK))
+$(eval $(call EXT_LOCK_TEMPLATE,queued_spinlock,            ../../ext/linux/queued_spinlock.h,      $(INCLUDE_LINUX)))
+
+$(eval $(call EXT_LOCK_TEMPLATE,clh_spinlock,               ../../ext/sms/clh_spinlock.h,           $(INCLUDE_SMS)))
+
+$(eval $(call EXT_LOCK_TEMPLATE,jvm_objectmonitor,          ../../ext/jvm/jvm_objectmonitor.h,      $(INCLUDE_JVM)))
+
+$(eval $(call EXT_LOCK_TEMPLATE,tbb_spin_rw_mutex,          ../../ext/tbb/tbb_spin_rw_mutex.h,      $(INCLUDE_TBB)))
 
 
 # ----------------------------------------------------------------------
-# recipes for building measure object files of specific locks
+# measure object (.o) for generic locks in benchmarks/lockhammer/tests/
 
-
-# measure objects (.o) for specific external locks, i.e. $(BUILD_DIR)/measure.$lock_name.o
-
-$(BUILD_DIR)/measure.lh_event_mutex.o: ../../ext/mysql/event_mutex.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=event_mutex src/measure.c -c -o $@ $(INCLUDE_MYSQL)
-
-$(BUILD_DIR)/measure.lh_cas_event_mutex.o: ../../ext/mysql/cas_event_mutex.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=cas_event_mutex src/measure.c -c -o $@ $(INCLUDE_MYSQL)
-
-$(BUILD_DIR)/measure.lh_ticket_spinlock.o: ../../ext/linux/ticket_spinlock.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=ticket_spinlock src/measure.c -c -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_hybrid_spinlock.o: ../../ext/linux/hybrid_spinlock.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=hybrid_spinlock src/measure.c -c -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_hybrid_spinlock_fastdequeue.o: ../../ext/linux/hybrid_spinlock_fastdequeue.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=hybrid_spinlock_fastdequeue src/measure.c -c -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_osq_lock.o: ../../ext/linux/osq_lock.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=osq_lock src/measure.c -c -o $@ $(INCLUDE_LINUX) -DOSQ_LOCK
-
-$(BUILD_DIR)/measure.lh_clh_spinlock.o: ../../ext/sms/clh_spinlock.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=clh_spinlock src/measure.c -c -o $@ $(INCLUDE_SMS)
-
-$(BUILD_DIR)/measure.lh_queued_spinlock.o: ../../ext/linux/queued_spinlock.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=queued_spinlock src/measure.c -c -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_jvm_objectmonitor.o: ../../ext/jvm/jvm_objectmonitor.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=jvm_objectmonitor src/measure.c -c -o $@ $(INCLUDE_JVM)
-
-$(BUILD_DIR)/measure.lh_tbb_spin_rw_mutex.o: ../../ext/tbb/tbb_spin_rw_mutex.h | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c -c -o $@ $(INCLUDE_TBB)
-
-
-
-# measure object depfiles (.d) for specific locks
-
-$(BUILD_DIR)/measure.lh_event_mutex.d: ../../ext/mysql/event_mutex.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=event_mutex src/measure.c $(INCLUDE_MYSQL)
-
-$(BUILD_DIR)/measure.lh_cas_event_mutex.d: ../../ext/mysql/cas_event_mutex.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=cas_event_mutex src/measure.c $(INCLUDE_MYSQL)
-
-$(BUILD_DIR)/measure.lh_ticket_spinlock.d: ../../ext/linux/ticket_spinlock.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=ticket_spinlock src/measure.c $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_hybrid_spinlock.d: ../../ext/linux/hybrid_spinlock.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=hybrid_spinlock src/measure.c $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_hybrid_spinlock_fastdequeue.d: ../../ext/linux/hybrid_spinlock_fastdequeue.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=hybrid_spinlock_fastdequeue src/measure.c $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_osq_lock.d: ../../ext/linux/osq_lock.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=osq_lock src/measure.c $(INCLUDE_LINUX) -DOSQ_LOCK
-
-$(BUILD_DIR)/measure.lh_clh_spinlock.d: ../../ext/sms/clh_spinlock.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=clh_spinlock src/measure.c $(INCLUDE_SMS)
-
-$(BUILD_DIR)/measure.lh_queued_spinlock.d: ../../ext/linux/queued_spinlock.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=queued_spinlock src/measure.c $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_jvm_objectmonitor.d: ../../ext/jvm/jvm_objectmonitor.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=jvm_objectmonitor src/measure.c $(INCLUDE_JVM)
-
-$(BUILD_DIR)/measure.lh_tbb_spin_rw_mutex.d: ../../ext/tbb/tbb_spin_rw_mutex.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c $(INCLUDE_TBB)
-
-
-# preprocessed output (.i) for specific locks
-
-$(BUILD_DIR)/measure.lh_event_mutex.i: ../../ext/mysql/event_mutex.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=event_mutex src/measure.c -E -o $@ $(INCLUDE_MYSQL)
-
-$(BUILD_DIR)/measure.lh_cas_event_mutex.i: ../../ext/mysql/cas_event_mutex.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=cas_event_mutex src/measure.c -E -o $@ $(INCLUDE_MYSQL)
-
-$(BUILD_DIR)/measure.lh_ticket_spinlock.i: ../../ext/linux/ticket_spinlock.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=ticket_spinlock src/measure.c -E -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_hybrid_spinlock.i: ../../ext/linux/hybrid_spinlock.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=hybrid_spinlock src/measure.c -E -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_hybrid_spinlock_fastdequeue.i: ../../ext/linux/hybrid_spinlock_fastdequeue.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=hybrid_spinlock_fastdequeue src/measure.c -E -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_osq_lock.i: ../../ext/linux/osq_lock.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=osq_lock src/measure.c -E -o $@ $(INCLUDE_LINUX) -DOSQ_LOCK
-
-$(BUILD_DIR)/measure.lh_clh_spinlock.i: ../../ext/sms/clh_spinlock.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=clh_spinlock src/measure.c -E -o $@ $(INCLUDE_SMS)
-
-$(BUILD_DIR)/measure.lh_queued_spinlock.i: ../../ext/linux/queued_spinlock.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=queued_spinlock src/measure.c -E -o $@ $(INCLUDE_LINUX)
-
-$(BUILD_DIR)/measure.lh_jvm_objectmonitor.i: ../../ext/jvm/jvm_objectmonitor.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=jvm_objectmonitor src/measure.c -E -o $@ $(INCLUDE_JVM)
-
-$(BUILD_DIR)/measure.lh_tbb_spin_rw_mutex.i: ../../ext/tbb/tbb_spin_rw_mutex.h | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=tbb_spin_rw_mutex src/measure.c -E -o $@ $(INCLUDE_TBB)
-
-
-
-
-# measure object (.o) for generic locks -- preserve intermediate file that would otherwise be removed by make
+# preserve intermediate file that would otherwise be removed by make
 .PRECIOUS: $(BUILD_DIR)/measure.lh_%.o
-$(BUILD_DIR)/measure.lh_%.o: tests/%.h $(MEASURE_C_DEP_HEADERS) src/measure.c | $(BUILD_DIR)
-	@echo [CC -c] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c -c -o $@
 
-# preprocessed output (.i) for generic locks
-$(BUILD_DIR)/measure.lh_%.i: tests/%.h $(MEASURE_C_DEP_HEADERS) src/measure.c | $(BUILD_DIR)
-	@echo [CC -E] $@
-	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c -E -o $@
+$(BUILD_DIR)/measure.lh_%.o: tests/%.h src/measure.c $(MEASURE_C_DEP_HEADERS) | $(BUILD_DIR)
+	$(info $(CCC_PROMPT)$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c -c -o $@
 
 # measure dep file (.d) for generic locks
 $(BUILD_DIR)/measure.lh_%.d: tests/%.h src/measure.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c
+	$(info $(CCMM_PROMPT)$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' -o $@
+
+# preprocessed output (.i) for generic locks
+$(BUILD_DIR)/measure.lh_%.i: tests/%.h src/measure.c $(MEASURE_C_DEP_HEADERS) | $(BUILD_DIR)
+	$(info $(CCE_PROMPT)$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c -E -o $@
+
+# measure assembly (.s) for generic locks
+$(BUILD_DIR)/measure.lh_%.s: tests/%.h src/measure.c $(MEASURE_C_DEP_HEADERS) | $(BUILD_DIR)
+	$(info $(CCS_PROMPT)$@)
+	$(hide) $(CC) $(CFLAGS) $(LOCK_CFLAGS) -DATOMIC_TEST=\"$<\" -DTEST_NAME=$(basename $(notdir $<)) src/measure.c -S -o $@
 
 
-# all other dep files (.d), including harness dep files
-$(BUILD_DIR)/%.d: src/%.c | $(BUILD_DIR)
-	@echo [CC -MM] $@
-	$(hide) $(CC) -o $@ -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' $(CFLAGS) $(LOCK_CFLAGS) $<
 
 # all other binary objects (.o), including harness objects
 $(BUILD_DIR)/%.o: src/%.c | $(BUILD_DIR)
-	@echo [CC -c] $@
+	$(info $(CCC_PROMPT)$@)
 	$(hide) $(CC) $(CFLAGS) $< -c -o $@
+
+# singleton .o --> .dump; was for measure.$test_name.o --> measure.$test_name.dump, but not automated anymore
+$(BUILD_DIR)/%.dump: $(BUILD_DIR)/%.o | $(BUILD_DIR)
+	$(info $(OBJDUMP_PROMPT)$@)
+	$(hide) $(OBJDUMP) -d $(OBJDUMP_FLAGS) $< > $@
+
+# all other dep files (.d), including harness dep files
+$(BUILD_DIR)/%.d: src/%.c | $(BUILD_DIR)
+	$(info $(CCMM_PROMPT)$@)
+	$(hide) $(CC) $(CFLAGS) $< -MM -MT '$(@:.d=.o) $(@:.d=.i) $@' -o $@
 
 # all other code preprocessed files (.i), including harness objects
 $(BUILD_DIR)/%.i: src/%.c | $(BUILD_DIR)
-	@echo [CC -E] $@
+	$(info $(CCE_PROMPT)$@)
 	$(hide) $(CC) $(CFLAGS) $< -E -o $@
 
+# all other assembly files (.s), including harness objects
+$(BUILD_DIR)/%.s: src/%.c | $(BUILD_DIR)
+	$(info $(CCS_PROMPT)$@)
+	$(hide) $(CC) $(CFLAGS) $< -S -o $@
+
+
+
+# dump for the lh_ prefixed executable binary
+$(BUILD_DIR)/lh_%.dump: $(BUILD_DIR)/lh_% | $(BUILD_DIR)
+	$(info $(OBJDUMP_PROMPT)$@)
+	$(hide) $(OBJDUMP) -d $(OBJDUMP_FLAGS) $< > $@
 
 
 # ----------------------------------------------------------------------
@@ -741,5 +753,5 @@ $(BUILD_DIR)/%.i: src/%.c | $(BUILD_DIR)
 # done as a secondary expansion, which is why this is defined here.
 
 $(addprefix $(BUILD_DIR)/,$(TEST_TARGETS)): $(HARNESS_OBJS) $(BUILD_DIR)/measure.$$(notdir $$@).o | $(BUILD_DIR)
-	@echo [LD] $@
+	$(info $(LD_PROMPT)$@)
 	$(hide) $(LD) $^ $(LDFLAGS) -o $@
