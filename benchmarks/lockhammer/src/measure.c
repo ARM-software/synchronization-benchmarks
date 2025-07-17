@@ -203,6 +203,9 @@ void NOINLINE blackhole(unsigned long iters) {
 #endif
 #elif __x86_64__
     asm volatile (".p2align 4; 1: add $-1, %0; jne 1b" : "+r" (iters) );
+#elif __riscv
+	asm volatile (
+        ".p2align 4; 1: addi %0, %0, -1; bnez %0, 1b" :"+r" (iters) : "0" (iters));
 #endif
 }
 

@@ -129,6 +129,8 @@ static size_t get_ctr_erg_bytes(void) {
     return ERG_words * 4;
 #elif defined(__x86_64__)
     return 64;
+#elif defined(__riscv)
+	return 64;
 #else
 #error neither __aarch64__ nor __x86_64__ are defined in get_ctr_erg_bytes()
 #endif

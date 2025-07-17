@@ -63,9 +63,18 @@ static inline void __cpu_relax(void) {
 #endif
 #endif // __x86_64__
 
+#ifdef __riscv
+#if defined(RELAX_IS_EMPTY)
+	asm volatile ("" : : : "memory");
+#elif defined(RELAX_IS_NOP)
+	asm volatile ("nop" : : : "memory");
+#elif defined(RELAX_IS_NOTHING)
+	
+#endif
+#endif // __riscv
+
     }
 }
-
 #endif // CPU_RELAX_H
 
 /* vim: set tabstop=4 shiftwidth=4 softtabstop=4 expandtab: */

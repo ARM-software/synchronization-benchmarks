@@ -278,6 +278,12 @@ inline static void OrderAccess_fence(void) {
 }
 #endif
 
+#ifdef __riscv
+inline static void OrderAccess_fence(void) {
+	__asm__ volatile ("fence rw,rw" : : : "memory");	
+}
+#endif
+
 inline static void storeload(void) {
     OrderAccess_fence();
 }
@@ -300,6 +306,17 @@ inline static int int_xchg(int exchange_value, volatile int* dest) {
     int res = __sync_lock_test_and_set(dest, exchange_value);
     FULL_MEM_BARRIER;
     return res;
+}
+#elif defined(__riscv)
+inline static int int_xchg(int exchange_value, volatile int* dest) {
+	int result;
+    __asm__ __volatile__ (
+        "amoswap.w.aqrl %0, %1, (%2)"
+        : "=r" (result)
+        : "r" (exchange_value), "r" (dest)
+        : "memory"
+    );
+    return result;
 }
 #endif
 
@@ -636,6 +653,8 @@ static inline int SpinPause(void) {
     return 0;
 #elif __x86_64__
     return 1;
+#elif __riscv
+	return 2;
 #else
 #error "unsupported instruction set architecture"
 #endif

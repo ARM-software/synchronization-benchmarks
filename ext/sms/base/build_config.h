@@ -17,6 +17,9 @@
 #elif defined(__i386__)
 #define CONFIG_ARCH_X86
 #define CONFIG_ARCH_32BIT
+#elif defined(__riscv)
+#define CONFIG_ARCH_RISCV64
+#define CONFIG_ARCH_64BIT
 #endif
 
 #if !defined(CONFIG_ARCH_64BIT) && !defined(CONFIG_ARCH_32BIT)

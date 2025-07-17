@@ -50,6 +50,8 @@ static inline void prefetchw(const void *ptr) {
 	asm volatile("prefetchw	%P1\n" : : "m" (*(const char *) ptr));
 #elif defined(__aarch64__)
 	asm volatile("prfm pstl1keep, %a0\n" : : "p" (ptr));
+#elif defined(__riscv) && defined(__riscv_zicbop)
+    asm volatile("prefetch.w 0(%0)" : : "m" (ptr) : "memory");
 #else
 #endif
 }
@@ -121,6 +123,22 @@ static inline uint32_t atomic_cmpxchg_acquire32(uint32_t *ptr, uint32_t exp, uin
 	: [exp] "Lr" (exp), [val] "r" (val)
 	: );
 #endif
+#elif defined(__riscv) && !defined(__riscv_zacas)
+	unsigned long tmp;
+    asm volatile (
+        "1: lr.w.aq %[old], %[ptr]\n"       
+        "   bne %[old], %[exp], 2f\n"       
+        "   sc.w %[tmp], %[val], %[ptr]\n"    
+        "   bnez %[tmp], 1b\n"          
+        "2:"
+        : [old] "=&r" (old), [tmp] "=&r" (tmp) , [ptr] "+A" (*(uint32_t *)(ptr))
+        : [exp] "r" (exp), [val] "r" (val)
+        : "memory");
+#elif defined(__riscv) && defined(__riscv_zacas)
+    asm volatile("amocas.w.aq  %[exp], %[val], %[ptr]"
+                : [exp] "=&r" (old), [ptr] "+A" (*(ptr))
+                : "r[exp]" (exp), [val] "r" (val)
+                : "memory");	
 #else
 	/* TODO: builtin atomic call */
 #endif
@@ -165,6 +183,22 @@ static inline uint32_t atomic_cmpxchg_release32(uint32_t *ptr, uint32_t exp, uin
 	: [exp] "Lr" (exp), [val] "r" (val)
 	: );
 #endif
+#elif defined(__riscv) && !defined(__riscv_zacas)
+    unsigned long tmp;
+    asm volatile (
+        "1: lr.w %[old], %[ptr]\n"
+        "   bne %[old], %[exp], 2f\n"
+        "   sc.w.rl %[tmp], %[val], %[ptr]\n"
+        "   bnez %[tmp], 1b\n"
+        "2:"
+        : [old] "=&r" (old), [tmp] "=&r" (tmp) , [ptr] "+A" (*(uint32_t *)(ptr))
+        : [exp] "r" (exp), [val] "r" (val)
+        : "memory");
+#elif defined(__riscv) && defined(__riscv_zacas)
+    asm volatile("amocas.w.rl  %[exp], %[val], %[ptr]"
+                : [exp] "=&r" (old), [ptr] "+A" (*(uint32_t *)(ptr))
+                : "r[exp]" (exp), [val] "r" (val)
+                : "memory");
 #else
 	/* TODO: builtin atomic call */
 #endif
@@ -209,6 +243,22 @@ static inline uint32_t atomic_cmpxchg_relaxed32(uint32_t *ptr, uint32_t exp, uin
 	: [exp] "Lr" (exp), [val] "r" (val)
 	: );
 #endif
+#elif defined(__riscv) && !defined(__riscv_zacas)
+    unsigned long tmp;
+    asm volatile (
+        "1: lr.w.aq %[old], %[ptr]\n"
+        "   bne %[old], %[exp], 2f\n"
+        "   sc.w.rl %[tmp], %[val], %[ptr]\n"
+        "   bnez %[tmp], 1b\n"
+        "2:"
+        : [old] "=&r" (old), [tmp] "=&r" (tmp) , [ptr] "+A" (*(uint32_t *)(ptr))
+        : [exp] "r" (exp), [val] "r" (val)
+        : "memory");
+#elif defined(__riscv) && defined(__riscv_zacas)
+    asm volatile("amocas.w.aqrl  %[exp], %[val], %[ptr]"
+                : [exp] "=&r" (old), [ptr] "+A" (*(uint32_t *)(ptr))
+                : "r[exp]" (exp), [val] "r" (val)
+                : "memory");
 #else
 	/* TODO: builtin atomic call */
 #endif
@@ -276,6 +326,18 @@ atomic_fetch_or_acquire32(uint32_t i, atomic_t *v)
 	: [_loc] "r" (&v->counter), [_val] "r" (i)
 	: "memory");
 #endif
+	return old_val;
+#elif defined(__riscv)
+	uint32_t old_val, new_val, tmp;
+	asm volatile(
+		"1: lr.w.aq %[old], %[ptr]\n"
+		"   or %[val], %[old], %[_val]\n"
+		"   sc.w.rl %[tmp], %[val], %[ptr]\n"
+		"   bnez %[tmp], 1b\n"
+		: [old] "=&r" (old_val), [val] "=&r" (new_val), [tmp] "=&r" (tmp)
+		: [ptr] "A" (*((uint32_t *)(&v->counter))), [_val] "r" (i)
+		: "memory"
+    );
 	return old_val;
 #else
 	#error "Unable to define atomic_fetch_or_acquire"
