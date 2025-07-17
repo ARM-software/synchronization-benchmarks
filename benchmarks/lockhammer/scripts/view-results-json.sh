@@ -241,17 +241,20 @@ SPECIAL_HEADER[nominal_parallel]="nom_par"
 
 # SPECIAL_FILTER is how to have jq format the element. If the key does not exist, then .key is used for the filter.
 declare -A SPECIAL_FILTER
-SPECIAL_FILTER[cputime_ns_per_lock_acquire]='\(.cputime_ns_per_lock_acquire | if isnormal then round end)'
-SPECIAL_FILTER[wall_elapsed_ns_per_lock_acquire]='\(.wall_elapsed_ns_per_lock_acquire | if isnormal then round end)'
-SPECIAL_FILTER[full_concurrency_fraction]='\(.full_concurrency_fraction | if isnormal then (.*100|round/100) end)'
+
+ROUND_IF_NORMAL=' if isnormal then round else . end '
+
+SPECIAL_FILTER[cputime_ns_per_lock_acquire]="\(.cputime_ns_per_lock_acquire | $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[wall_elapsed_ns_per_lock_acquire]="\(.wall_elapsed_ns_per_lock_acquire | $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[full_concurrency_fraction]="\(.full_concurrency_fraction | if isnormal then (.*100|round/100) else . end)"
 SPECIAL_FILTER[host]='\(.hostname // "-" | split(".") | .[0])'
 SPECIAL_FILTER[json]='\(.input_filename // "-" | split(".") | .[:-1] | join("."))'
-SPECIAL_FILTER[avg_critical_ns_per_loop]='\(.avg_critical_ns_per_loop | if isnormal then round end)'
-SPECIAL_FILTER[avg_parallel_ns_per_loop]='\(.avg_parallel_ns_per_loop | if isnormal then round end)'
-SPECIAL_FILTER[avg_lock_overhead_cputime_ns]='\(.avg_lock_overhead_cputime_ns | if isnormal then round end)'
-SPECIAL_FILTER[lock_overhead_cputime_percent]='\(.lock_overhead_cputime_percent | if isnormal then round end)'
-SPECIAL_FILTER[total_lock_acquires_per_second]='\(.total_lock_acquires_per_second| if isnormal then round end)'
-SPECIAL_FILTER[lock_acquires_stddev_over_mean]='\(.lock_acquires_stddev_over_mean | if isnormal then (.*10000|round/10000) end)'
+SPECIAL_FILTER[avg_critical_ns_per_loop]="\(.avg_critical_ns_per_loop | $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[avg_parallel_ns_per_loop]="\(.avg_parallel_ns_per_loop | $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[avg_lock_overhead_cputime_ns]="\(.avg_lock_overhead_cputime_ns | $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[lock_overhead_cputime_percent]="\(.lock_overhead_cputime_percent | $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[total_lock_acquires_per_second]="\(.total_lock_acquires_per_second| $ROUND_IF_NORMAL)"
+SPECIAL_FILTER[lock_acquires_stddev_over_mean]='\(.lock_acquires_stddev_over_mean | if isnormal then (.*10000|round/10000) else . end)'
 
 # constructs the header or filter
 make_special() {
