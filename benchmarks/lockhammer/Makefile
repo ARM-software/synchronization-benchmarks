@@ -109,6 +109,9 @@
 # V=1
 #     show the executed command lines, e.g. make V=1
 #
+# TAG=tag
+#     add ".$tag" to the build dir name
+#
 
 ifeq ($(V),1)
 empty :=
@@ -336,6 +339,11 @@ VARIANT_NAME:=$(strip $(VARIANT_NAME))
 VARIANT_NAME:=$(subst $(space),.,$(VARIANT_NAME))
 
 BUILD_DIR=build.$(VARIANT_NAME)
+
+ifneq ($(TAG),)
+BUILD_DIR:=$(BUILD_DIR).$(TAG)
+endif
+
 LOCK_CFLAGS+=-DVARIANT_NAME=$(VARIANT_NAME)
 
 # ========================================================
