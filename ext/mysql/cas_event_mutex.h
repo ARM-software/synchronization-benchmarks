@@ -273,7 +273,7 @@ void event_mutex_init(uint64_t *lock, uint64_t threads) {
 		uint32_t	max_delay)
 	{
 		uint32_t	n_spins = 0;
-		uint32_t	n_waits = 0;
+//		uint32_t	n_waits = 0;	// this is incremented, but otherwise is not used
 		const uint32_t	step = max_spins;
 		unsigned long	wait_state;
 
@@ -297,7 +297,7 @@ void event_mutex_init(uint64_t *lock, uint64_t threads) {
 				max_spins = n_spins + step;
 			}
 
-			++n_waits;
+//			++n_waits;
 
 			wait_state = *((volatile unsigned long *) &ev_generation);
 

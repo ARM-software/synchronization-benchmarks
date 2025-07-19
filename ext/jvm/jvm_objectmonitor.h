@@ -935,7 +935,7 @@ void jvmObjectMonitorEnterI(pthread_t thisThread, const unsigned long threadnum)
         o_thread_cmpxchg(thisThread, &omonitor->_Responsible, NO_THREAD);
     }
 
-    int nWakeups = 0;
+//  int nWakeups = 0;   // this is incremented, but is not used.
     int recheckInterval = 1;
     for (;;) {
         if (jvmObjectMonitorTryLock(thisThread) > 0) break;
@@ -956,7 +956,7 @@ void jvmObjectMonitorEnterI(pthread_t thisThread, const unsigned long threadnum)
 
         // if here, thisThread has awakened
         if (jvmObjectMonitorTryLock(thisThread) > 0) break;
-        ++nWakeups;
+//      ++nWakeups;
         if ((Knob_SpinAfterFutile & 1) &&                   // is 1
                 (jvmObjectMonitorTrySpin(thisThread) > 0)) break;
         if ((Knob_ResetEvent & 1) && (Self_ParkEvent->_Event != 0)) { // never
