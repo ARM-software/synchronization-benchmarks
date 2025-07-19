@@ -212,11 +212,6 @@ int main(int argc, char** argv)
         .blackhole_numtries = 15,
     };
 
-    if (argc == 1) {
-        fprintf(stderr, "ERROR: no flags have been specified.  Use -h to see help.\n");
-        return -1;
-    }
-
     if (parse_args(argc, argv, &args, &sysinfo)) {
         return -1;
     }
