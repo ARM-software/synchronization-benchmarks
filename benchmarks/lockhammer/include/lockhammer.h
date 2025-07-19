@@ -106,6 +106,8 @@ typedef struct {
 typedef struct {
     int * cpu_list;     // pointer to an array of int.  index into this array is the thread number, each element is the logical CPU on which that thread is to run.
     size_t num_threads; // number of threads defined for this pinorder (i.e. length of the number of valid entries in the pinorder array).
+    char * pinorder_string; // text string of the cpu_list
+    unsigned long ileave;   // interleave value
 } pinorder_t;
 
 
@@ -121,7 +123,6 @@ typedef struct {
     duration_t * pars;      // -p, --pn=, --pi=    parallel duration
     size_t num_crits;
     size_t num_pars;
-    unsigned long ileave;    // -i    interleave value for SMT pinning
     int scheduling_policy;   // -S    use explicit scheduling policy
     size_t num_pinorders;
     pinorder_t * pinorders;  // -o    CPU pinning order
