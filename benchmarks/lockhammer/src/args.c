@@ -230,6 +230,11 @@ extern int opterr;
 
 int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t * psysinfo) {
 
+    if (argc == 1) {
+        fprintf(stderr, "ERROR: no flags have been specified.  Use -h to see help.\n");
+        return -1;
+    }
+
     enum {
         longopt_hugepage_offset,
         longopt_hugepage_physaddr,
@@ -535,10 +540,11 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
           case '?':
           case ':':
             if (opt == '?')
-                printf("option flag %s is unknown\n\n", argv[optind-1]);
+                printf("Option flag %s is unknown.\n\n", argv[optind-1]);
             else if (opt == ':')
-                printf("option flag %s is missing an argument\n\n", argv[optind-1]);
-            // fall-through
+                printf("Option flag %s is missing an argument.\n\n", argv[optind-1]);
+            printf("Use -h to print usage flags.\n");
+            exit(-1);
           case 'h':
             new_print_usage(argv[0]);
             exit(-1);
