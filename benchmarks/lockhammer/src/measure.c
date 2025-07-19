@@ -638,7 +638,7 @@ void set_cpu_affinity(const unsigned long run_on_this_cpu) {
 
     const int ret = sched_setaffinity(0, sizeof(cpu_set_t), &affin_mask);
     if (ret == -1) {
-        fprintf(stderr, "ERROR: sched_setaffinity() returned -1 when trying to run on CPU%lu; it is probably not online.\n", run_on_this_cpu);
+        fprintf(stderr, "\nERROR: sched_setaffinity() returned -1 when trying to run on CPU%lu; it is probably not online.\n", run_on_this_cpu);
         exit(-1);
     }
 }

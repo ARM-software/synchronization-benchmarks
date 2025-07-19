@@ -86,7 +86,7 @@ uint64_t * p_other_lock_memory;     // for locks.p_ready_lock, p_sync_lock, p_ca
 
 void disable_itimer (void);
 
-static unsigned long calculate_affinity(unsigned long thread_num, unsigned long num_cores, unsigned long ileave);
+static unsigned long calculate_affinity(const unsigned long thread_num, const system_info_t * psysinfo, const unsigned long ileave);
 void setup_hmr_attr (pthread_attr_t * p_hmr_attr, test_args_t * pargs);
 
 
@@ -181,7 +181,6 @@ int main(int argc, char** argv)
         .pars = NULL,          // dynamic array of parallel durations requested
         .num_crits = 0,
         .num_pars = 0,
-        .ileave = 0,         // -i
         .scheduling_policy = 0,  // -S FIFO|RR|OTHER
         .num_pinorders = 0,
         .pinorders = NULL,      // -o
@@ -238,36 +237,6 @@ int main(int argc, char** argv)
         printf("the estimated hwtimer frequency on CPU %ld in Hz is %lu\n", args.estimate_hwtimer_freq_cpu, freq);
         return 0;
     }
-
-    if (args.ileave) {
-
-        fprintf(stderr, "INFO: using interleaving mode with --interleave = %lu\n", args.ileave);
-
-        // num_cores = number of CPUs configured by the OS, basically all CPUs
-        // num_online_cores = getconf(_NPROCESSORS_ONLN) (includes online isolcpus)
-        // num_avail_cores = number of cores allowed by CPU affinity mask (excludes online isolcpus), basically CPU_COUNT(avail_cores)
-        // avail_cores = the CPU affinity mask
-
-        if (sysinfo.num_avail_cores != sysinfo.num_online_cores) {
-            // What we want to do is detect if there might be holes in the
-            // avail_cores schedmask because that may mean calculate_affinity()
-            // schedules onto a masked-off processor.  numactl --cpunodebind
-            // uses the modified CPU affinity mask to set affinity, which will
-            // also cause this warning to be printed.
-
-            fprintf(stderr, "WARNING: in interleaving mode, the number of available cores from processor affinity schedmask (%zu) does not equal the number of online cores (%zu)\n",
-                sysinfo.num_avail_cores, sysinfo.num_online_cores);
-        }
-
-        if (sysinfo.num_cores != sysinfo.num_online_cores) {
-            // This detects if there are CPUs that are offline on which
-            // calculate_affinity() may improperly try to place a thread.
-            fprintf(stderr, "WARNING: in interleaving mode, the number of configured cores (%zu) does not equal the number of online cores (%zu)\n",
-                sysinfo.num_cores, sysinfo.num_online_cores);
-        }
-
-    }
-
 
     if (args.print_hugepage_physaddr) {
         if (args.hugepagesz == HUGEPAGES_NONE) {
@@ -474,14 +443,13 @@ int main(int argc, char** argv)
 
         fprintf(stderr, "INFO: setting thread count to the number of available cores (%zu).\n", num_avail_cores);
 
-        if (args.verbose >= VERBOSE_YES)
-            printf("processing -t flag for %zu threads with -i %lu interleave\n", num_avail_cores, args.ileave);
-
         args.num_pinorders = 1;
         assert(args.pinorders == NULL);
         args.pinorders = malloc(sizeof(args.pinorders[0]));
         args.pinorders[0].num_threads = num_avail_cores;
         args.pinorders[0].cpu_list = NULL;
+        args.pinorders[0].ileave = 0;
+        args.pinorders[0].pinorder_string = strdup("0");  // XXX: since free is called on this
     }
 
     // generate cpu_list if it isn't already made
@@ -489,8 +457,9 @@ int main(int argc, char** argv)
 
         pinorder_t * po = &(args.pinorders[i]);
 
-        if (po->num_threads == 0) {             // "-t 0" was given on command line
+        if (po->num_threads == 0) {             // "-t 0" was given on command line or "-i interleave"
             po->num_threads = num_avail_cores;  // number of threads allowed by sched mask
+            assert(po->cpu_list == NULL);       // shouldn't have been allocated
         }
 
         // global data structures are sized using MAXTHREADS
@@ -505,20 +474,23 @@ int main(int argc, char** argv)
             continue;
         }
 
-        // For any -t num_threads flags, generate a pinorder cpu_list
+        // if here, didn't already have a cpu_list, so allocate it.
         po->cpu_list = malloc(sizeof(po->cpu_list[0]) * po->num_threads);
         if (po->cpu_list == NULL) {
              fprintf(stderr, "ERROR: can't allocate memory for a pinorder CPU list\n");
              exit(-1);
         }
 
-        if (args.ileave) {
+        if (po->ileave) {
+            // This pinorder is from a -i interleave_order
             // NOTE: This is calculated using sysinfo.num_cores (all CPUs configured by OS)
             // which can result in a placement on an offline CPU/not allowed by affinity mask.
             for (size_t j = 0; j < po->num_threads; j++) {
-                po->cpu_list[j] = calculate_affinity(j, sysinfo.num_cores, args.ileave);
+                po->cpu_list[j] = calculate_affinity(j, &sysinfo, po->ileave);
             }
+            // printf("ileave pinorder string = %s\n", po->pinorder_string);
         } else if (cpu_order_count) {
+            // There is a cpu_order read from cpuorder_filename, so assign cpu_list from it.
             // For -t num_threads, but allocated in the order from cpuorder_filename
             // This will not place on CPUs that are not available in the sysinfo.avail_cores mask
             int cpu_order_index = 0;
@@ -536,6 +508,7 @@ int main(int argc, char** argv)
                     }
                 } while (! found);
             }
+            // printf("cpu_order_count pinorder string = %s\n", po->pinorder_string);
         } else {
             // For -t num_threads allocated in CPU numerical order of sysinfo.avail_cores mask.
             int cpu = -1;
@@ -547,6 +520,7 @@ int main(int argc, char** argv)
                 }
                 po->cpu_list[j] = cpu;
             }
+            // printf("-t pinorder string = %s\n", po->pinorder_string);
         }
 
         if (args.verbose >= VERBOSE_YES) {
@@ -680,6 +654,9 @@ int main(int argc, char** argv)
     free(args.pars);
     for (size_t i = 0; i < args.num_pinorders; i++) {
         free(args.pinorders[i].cpu_list);
+        if (args.pinorders[i].pinorder_string) {
+            free(args.pinorders[i].pinorder_string);
+        }
     }
     free(args.pinorders);
     return 0;
@@ -776,7 +753,7 @@ static void run_one_experiment (test_args_t * args,
     return;
 }
 
-static unsigned long calculate_affinity(unsigned long thread_num, unsigned long num_cores, unsigned long ileave) {
+static unsigned long calculate_affinity(const unsigned long thread_num, const system_info_t * psysinfo, const unsigned long ileave) {
 
     /*
      * The "interleave" parameter given through -t num_threads:interleave is
@@ -827,7 +804,7 @@ static unsigned long calculate_affinity(unsigned long thread_num, unsigned long 
      *
      * Now, consider a logical to physical CPU arrangement where sequentially
      * numbered CPUs map to hwthreads first and then to physical cores;
-     * interleave=1 would place as such.  To use physical cores first, use
+     * interleave=1 would place as such, so for physical cores first, use
      * interleave=K.
      *
      *  physical core |___core_0__|___core_1__|_core_N/K-1|
@@ -850,7 +827,30 @@ static unsigned long calculate_affinity(unsigned long thread_num, unsigned long 
      *
      */
 
-    if (thread_num >= num_cores) {
+    // num_cores = number of CPUs configured by the OS, basically all CPUs
+    // num_online_cores = getconf(_NPROCESSORS_ONLN) (includes online isolcpus)
+    // num_avail_cores = number of cores allowed by CPU affinity mask (excludes online isolcpus), basically CPU_COUNT(avail_cores)
+    // avail_cores = the CPU affinity mask
+
+    if (!thread_num && psysinfo->num_avail_cores != psysinfo->num_online_cores) {
+        // What we want to do is detect if there might be holes in the
+        // avail_cores schedmask because that may mean calculate_affinity()
+        // schedules onto a masked-off processor.  numactl --cpunodebind
+        // uses the modified CPU affinity mask to set affinity, which will
+        // also cause this warning to be printed.
+
+        fprintf(stderr, "WARNING: in interleaving mode, the number of available cores from processor affinity schedmask (%zu) does not equal the number of online cores (%zu)\n",
+            psysinfo->num_avail_cores, psysinfo->num_online_cores);
+    }
+
+    if (!thread_num && psysinfo->num_cores != psysinfo->num_online_cores) {
+        // This detects if there are CPUs that are offline on which
+        // calculate_affinity() may improperly try to place a thread.
+        fprintf(stderr, "WARNING: in interleaving mode, the number of configured cores (%zu) does not equal the number of online cores (%zu)\n",
+            psysinfo->num_cores, psysinfo->num_online_cores);
+    }
+
+    if (thread_num >= psysinfo->num_cores) {
         // the code below does not assign to threads correctly if the number of threads to assign is greater than the number of cores.
         fprintf(stderr, "ERROR: unexpectedly thread_num >= num_cores in calculate_affinity().\n");
         exit(-1);

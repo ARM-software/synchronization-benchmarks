@@ -168,14 +168,14 @@ Example:
 
 	$ build.relax_pause/lh_ticket_spinlock -c 500 -p 500 -T 2
 
-	Starting test_name=ticket_spinlock variant_name=relax_pause
+	Starting test_name=ticket_spinlock variant_name=relax_pause test_type=
 	INFO: setting thread count to the number of available cores (24).
-	Finished running test_name=ticket_spinlock variant_name=relax_pause
-	po  cpus
-	0   0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+	Finished test_name=ticket_spinlock variant_name=relax_pause test_type=
+	po  name cpus
+	0        0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
 
 	po  meas  test  iter  thrds | cpu_ns/lock - crit_ns - par_ns  = overhead_ns % | lasom | locks/wall_sec
-	0   1     1     1     24    | 6801          98        101       6603      97% | 0.005 | 3528675
+	0   1     1     1     24    | 7045          113       113       6820      97% | 0.004 | 3406366
 
 
 When multiple -c, -p, or -o / -t flags are used, all permutations of these
@@ -186,16 +186,15 @@ The supported flags are shown when a lockhammer binary is run with the -h flag:
 ::
 build.relax_pause/lh_empty [args]
 
-processor affinity selection (pick one of either -t or -o):
- -o | --pinning-order   n:[n:[n...]]          arbitrary CPU pinning order set, separated by comma, colon, or hard space
-                                              A separate measurement will be conducted for each -o pinorder set.
- -t | --num-threads           integer         number of worker threads to use
- -i | --interleave-pinning    integer         number of hwthreads per core to algorithmically distribute worker threads using -t
-    1: per-core pinning/no SMT, 2: 2-way SMT pinning, 4: 4-way SMT pinning, etc.; these modes will override the existing scheduler processor affinity mask
-    0: enumerate CPUs from existing affinity mask
- -C | --cpuorder-file         filename        for -t/--num-threads, allocate by CPU by number in order from this text file
+processor affinity selection (need at least one of -t or -o; permuted on each):
+ -o | --pinning-order   n,[n,[n...]]          a list of CPUs on which to run
+ -t | --num-threads     threads[:interleave]  number of threads to use
+        interleave = 0  Enumerate CPUs from the existing affinity mask (this is the default)
+        interleave >= 1 algorithmically increment CPU number, e.g. -t 3:2 means CPU 0,2,4
+                        Overrides processor affinity mask, or misplace on an offline CPU.
+ -C | --cpuorder-file         filename        for -t/--num-threads, allocate CPUs by number in the order in this text file
 
-lock durations (at least one of both critical and parallel duration must be specified, and will be permuted):
+lock durations (at least one of both critical and parallel duration must be specified; will be permuted):
  -c | --critical              duration[ns|in] critical duration measured in nanoseconds (use "ns" suffix) or instructions (use "in" suffix; default is "in" if omitted)
  -p | --parallel              duration[ns|in] parallel duration measured in nanoseconds (use "ns" suffix) or instructions (use "in" suffix; default is "in" if omitted)
 --cn| --critical-nanoseconds  nanoseconds     upon acquiring a lock, duration to hold the lock ("-c 1234ns" equivalent)
@@ -210,28 +209,28 @@ experiment length (work-based):
  -a | --num-acquires          integer         number of acquires to do per thread
 
 experiment length (time-based):
- -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks
  -T | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds
+ -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks
  -I | --run-limit-inner-iterations  integer   number of inner iterations of measurement between hardware timer polls
       --hwtimer-frequency     freq_hertz      Override HW timer frequency in Hertz instead of trying to determine it
       --estimate-hwtimer-frequency cpu_num    Estimate HW timer frequency on cpu_num
       --timeout-usecs         integer         kill benchmark if it exceeds this number of microseconds
 
 scheduler control:
- -S | --scheduling-policy     FIFO|RR|OTHER   set explicit scheduling policy of created threads (may need root)
+ -S | --scheduling-policy     FIFO|RR|OTHER   set explicit scheduling policy of created threads (needs root)
 
 memory placement control (hugepages):
- -M | --hugepage-size  <integer|help|default> mmap hugepages of a size listed in "-M help"
-      --print-hugepage-physaddr               print the physical address of the hugepage obtained, and then exit (must run as root)
+ -M | --hugepage-size  <integer|help|default> use hugetlb page for lock memory; see "-M help" for sizes
       --hugepage-offset       integer         if --hugepage-size is used, the byte offset into the hugepage for the tests' lock
       --hugepage-physaddr     physaddr        obtain only the hugepage with the physaddr specified (must run as root)
+      --print-hugepage-physaddr               print the physical address of the hugepage obtained, and then exit (must run as root)
 
 other:
       --json filename                         save results to filename as a json
  -Y | --ignore-unknown-scaling-governor       do not exit as error if CPU scaling driver+governor is known bad/not known good
  -Z | --suppress-cpu-frequency-warnings       suppress CPU frequecy scaling / governor warnings
- -v | --verbose                               print verbose messages
-      --more-verbose                          print even more verbose messages
+ -v | --verbose                               print verbose messages (use 2x for more verbose)
+      --more-verbose                          print more verbose messages
 
 lock-specific:
  -- <workload-specific arguments>             lock-specific arguments are passed after --
@@ -452,20 +451,23 @@ The CPU number is determined based on the following:
 
         -t 3
 
-* interleaving (-i/--interleave-pinning)
+    Note: this is implicitly -t num_cpus:interleaving with
+    interleaving=0, and will not allocate on an offline CPU
+
+* number of threads with interleaving (-t num_cpus:interleaving)
 
     This changes the ordering of -t by skipping CPU numbers.
 
     For example, this runs on CPU0, CPU2, and CPU4.
 
-        -t 3 -i 1
+        -t 3:2
 
     Note the CPU number is calculated by a formula and may
-    select a CPU core that is offline or not schedulable.
+    select a CPU that is offline or not schedulable.
 
-    The special case of -i 0 allocates CPUs using the existing
-    CPU affinity mask to allow for discontiguous CPU numbers,
-    such as a system with disabled/offline CPUs.
+    The special case of interleaving=0 allocates CPUs using the existing
+    CPU affinity mask to allow for discontiguous CPU numbers, such as a
+    system with disabled/offline CPUs.
 
 When -t/--num-threads is used, CPUs are allocated starting from CPU 0
 and up.  This can be changed by using the --cpuorder-file flag with a text

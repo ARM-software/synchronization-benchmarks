@@ -39,6 +39,7 @@
 #include <getopt.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 #include <errno.h>
 
 #include "verbose.h"
@@ -52,16 +53,15 @@ static void new_print_usage (const char * invoc) {
     fprintf(stderr,
     "%s [args]\n"
     "\n"
-    "processor affinity selection (pick one of either -t or -o):\n"
-    " -o | --pinning-order   n:[n:[n...]]          arbitrary CPU pinning order set, separated by comma, colon, or hard space\n"
-    "                                              A separate measurement will be conducted for each -o pinorder set.\n"
-    " -t | --num-threads           integer         number of worker threads to use\n"
-    " -i | --interleave-pinning    integer         number of hwthreads per core to algorithmically distribute worker threads using -t\n"
-    "    1: per-core pinning/no SMT, 2: 2-way SMT pinning, 4: 4-way SMT pinning, etc.; these modes will override the existing scheduler processor affinity mask\n"
-    "    0: enumerate CPUs from existing affinity mask\n"
-    " -C | --cpuorder-file         filename        for -t/--num-threads, allocate by CPU by number in order from this text file\n"
+    "processor affinity selection (need at least one of -t or -o; permuted on each):\n"
+    " -o | --pinning-order   m[,m[-n[:s]]...]      run on CPU m; CPU m-n; CPU m-n skipping by s\n"
+    " -t | --num-threads     threads[:interleave]  number of threads to use\n"
+    "        interleave = 0  Enumerate CPUs from the existing affinity mask (this is the default)\n"
+    "        interleave >= 1 algorithmically increment CPU number, e.g. -t 3:2 means CPU 0,2,4\n"
+    "                        Overrides processor affinity mask, or misplace on an offline CPU.\n"
+    " -C | --cpuorder-file         filename        for -t/--num-threads, allocate CPUs by number in the order in this text file\n"
     "\n"
-    "lock durations (at least one of both critical and parallel duration must be specified, and will be permuted):\n"
+    "lock durations (at least one of both critical and parallel duration must be specified; will be permuted):\n"
     " -c | --critical              duration[ns|in] critical duration measured in nanoseconds (use \"ns\" suffix) or instructions (use \"in\" suffix; default is \"in\" if omitted)\n"
     " -p | --parallel              duration[ns|in] parallel duration measured in nanoseconds (use \"ns\" suffix) or instructions (use \"in\" suffix; default is \"in\" if omitted)\n"
     "--cn| --critical-nanoseconds  nanoseconds     upon acquiring a lock, duration to hold the lock (\"-c 1234ns\" equivalent)\n"
@@ -76,21 +76,21 @@ static void new_print_usage (const char * invoc) {
     " -a | --num-acquires          integer         number of acquires to do per thread\n"
     "\n"
     "experiment length (time-based):\n"
-    " -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks\n"
     " -T | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds\n"
+    " -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks\n"
     " -I | --run-limit-inner-iterations  integer   number of inner iterations of measurement between hardware timer polls\n"
     "      --hwtimer-frequency     freq_hertz      Override HW timer frequency in Hertz instead of trying to determine it\n"
     "      --estimate-hwtimer-frequency cpu_num    Estimate HW timer frequency on cpu_num\n"
     "      --timeout-usecs         integer         kill benchmark if it exceeds this number of microseconds\n"
     "\n"
     "scheduler control:\n"
-    " -S | --scheduling-policy     FIFO|RR|OTHER   set explicit scheduling policy of created threads (may need root)\n"
+    " -S | --scheduling-policy     FIFO|RR|OTHER   set explicit scheduling policy of created threads (needs root)\n"
     "\n"
     "memory placement control (hugepages):\n"
-    " -M | --hugepage-size  <integer|help|default> mmap hugepages of a size listed in \"-M help\"\n"
-    "      --print-hugepage-physaddr               print the physical address of the hugepage obtained, and then exit (must run as root)\n"
+    " -M | --hugepage-size  <integer|help|default> use hugetlb page for lock memory; see \"-M help\" for sizes\n"
     "      --hugepage-offset       integer         if --hugepage-size is used, the byte offset into the hugepage for the tests' lock\n"
     "      --hugepage-physaddr     physaddr        obtain only the hugepage with the physaddr specified (must run as root)\n"
+    "      --print-hugepage-physaddr               print the physical address of the hugepage obtained, and then exit (must run as root)\n"
     "\n"
     "other:\n"
 #ifdef JSON_OUTPUT
@@ -225,6 +225,10 @@ static int parse_scheduling_policy(const char * optarg) {
     return -1; // shouldn't get here
 }
 
+
+size_t parse_num_threads(char * s, unsigned long * p_numbers);
+size_t parse_cpulist_range(char * s, unsigned long * p_numbers);
+
 extern char * optarg;
 extern int opterr;
 
@@ -274,7 +278,6 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
         {"critical",            required_argument,  NULL,         'c'},
         {"parallel",            required_argument,  NULL,         'p'},
         {"scheduling-policy",   required_argument,  NULL,         'S'},
-        {"interleave-pinning",  required_argument,  NULL,         'i'},
         {"pinning-order",       required_argument,  NULL,         'o'},
         {"iterations",          required_argument,  NULL,         'n'},
         {"run-limit-ticks",     required_argument,  NULL,         'O'},
@@ -310,7 +313,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
     while (1) {
         this_arg = argv[optind];
         // printf("before getopt_long, argv[0] = %s, this_arg = argv[optind] = %s\n", argv[0], this_arg);
-        int opt = getopt_long(argc, argv, ":t:a:c:p:i:o:S:C:I:O:M:hn:T:vYZ", long_options, NULL);
+        int opt = getopt_long(argc, argv, ":t:a:c:p:o:S:C:I:O:M:hn:T:vYZ", long_options, NULL);
         long optval;
         char * endptr = NULL;
 
@@ -380,45 +383,112 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
             pargs->pars[pargs->num_pars].unit = equals_ns(endptr) ? NS : equals_in(endptr) ? INSTS : INSTS;
             pargs->num_pars++;
             break;
-          case 'i': // .ileave
-            pargs->ileave = strtoul(optarg, (char **) NULL, 10);
-            break;
           case 'n': // --iterations
             pargs->iterations = strtoul(optarg, (char **) NULL, 10);
             break;
-          case 't': // number of threads using -t
-          case 'o': // pinorder - list the core numbers on which to run
+          case 't': // -t number_of_threads[:interleaving]
+          case 'o': // -o pinorder - cpulist on which to run
             {
                 // instead of iterating over cpu_set_t bitmaks,
                 // store in a temp array to preserve the order from -o pinorder
 
+                char * this_pinorder = NULL;
                 int * p = NULL;
                 size_t num_cpus_specified = 0;
-                int cpus_specified[psysinfo->num_cores];    // the index into this is the thread number, so the maximum number of elements is the maximum number of cores in the system.
+                unsigned long ileave = 0;
+                int cpus_specified[psysinfo->num_cores]; // the index into this is the thread number, so the maximum number of elements is the maximum number of cores in the system.
 
                 if (opt == 'o') {
 
                     cpu_set_t pinorder_specified_cores; // track if this -o pinorder has duplicate cpu
                     CPU_ZERO(&pinorder_specified_cores);
 
-                    /* support comma, colon, and space as delimiter */
-                    const char * pinorder_delim = ",: ";
-                    char * csv = strtok(optarg, pinorder_delim);
+                    const char * pinorder_delim = ",";  // for tokenizing CPUs and CPU ranges from optarg
+                    this_pinorder = strdup(optarg);     // this is a copy of the cpu,cpu,cpu... argument
 
-                    for (size_t i = 0; i < psysinfo->num_cores && csv != NULL; ++i) {
-                        int cpu = strtol(csv, (char **) NULL, 0);
+                    char * csv;
+                    while ((csv = strsep(&optarg, pinorder_delim))) {
 
-                        if (CPU_ISSET(cpu, &pinorder_specified_cores)) {
-                            fprintf(stderr, "ERROR: core number %d was previously specified in --pinning-order/-o pinorder list.  It must be specified only once.\n", cpu);
+                        char * this_csv = strdup(csv);  // a copy of the CPU range (cpu, cpu-cpu, cpu-cpu:skip) currently being parsed
+                        long cpu_skip = 1;
+                        unsigned long cpu_range[3];
+
+                        size_t num_count = parse_cpulist_range(csv, cpu_range);
+#if 0
+                        for (size_t i = 0; i < num_count; i++) {
+                            printf("cpu_range[%zu] = %lu\n", i, cpu_range[i]);;
+                        }
+#endif
+
+                        if (num_count == 0) {
+                            fprintf(stderr, "ERROR: could not parse the -o pinorder CPU range %s as m[-n[:s]], or one of them is not a non-negative number or ends with an unexpected character.\n", this_csv);
                             exit(-1);
                         }
 
-                        CPU_SET(cpu, &pinorder_specified_cores);
-                        cpus_specified[num_cpus_specified++] = cpu;
-                        csv = strtok(NULL, pinorder_delim);
+                        if (num_count == 1) {
+                            cpu_range[1] = cpu_range[0];
+                        }
+
+                        if (num_count == 3) {
+                            cpu_skip = (long) cpu_range[2];
+                        }
+
+                        if (cpu_range[1] >= psysinfo->num_cores) {
+                            fprintf(stderr, "ERROR: in pinorder CPU range %s, the specified CPU %lu is higher than the number of logical CPUs.\n", this_csv, cpu_range[1]);
+                            exit(-1);
+                        }
+
+                        if (cpu_skip < 1) {
+                            fprintf(stderr, "ERROR: in pinorder CPU range %s, the CPU interleave skip is less than 1.\n", this_csv);
+                            exit(-1);
+                        }
+
+                        free(this_csv);
+
+#if 0
+                        // not sure if this check is really necessary, but it helped to detect misparsing cpulist ranges
+                        size_t cpu_range_count = 1 + labs(cpu_range[1] - cpu_range[0]) / cpu_skip;
+                        if (num_cpus_specified + cpu_range_count > psysinfo->num_cores) {
+                            fprintf(stderr, "ERROR: pinorder %s specifies more CPUs than the number of CPUs configured in the system.  (cpu_range_count = %zu)\n", this_pinorder, cpu_range_count);
+                            exit(-1);
+                        }
+#endif
+
+                        if (cpu_range[1] >= cpu_range[0]) {
+                            // counting upwards
+                            for (int cpu = cpu_range[0]; cpu <= cpu_range[1]; cpu += cpu_skip) {
+                                if (CPU_ISSET(cpu, &pinorder_specified_cores)) {
+                                    fprintf(stderr, "ERROR: CPU number %d was previously specified in --pinning-order/-o pinorder list.  It must be specified only once.\n", cpu);
+                                    exit(-1);
+                                }
+
+                                CPU_SET(cpu, &pinorder_specified_cores);
+                                cpus_specified[num_cpus_specified++] = cpu;
+                            }
+                        } else {
+                            // counting downwards
+                            for (int cpu = cpu_range[0]; cpu >= cpu_range[1]; cpu -= cpu_skip) {
+                                if (CPU_ISSET(cpu, &pinorder_specified_cores)) {
+                                    fprintf(stderr, "ERROR: CPU number %d was previously specified in --pinning-order/-o pinorder list.  It must be specified only once.\n", cpu);
+                                    exit(-1);
+                                }
+
+                                CPU_SET(cpu, &pinorder_specified_cores);
+                                cpus_specified[num_cpus_specified++] = cpu;
+                            }
+                        }
+
                     }
 
-                    p = malloc(sizeof(int) * num_cpus_specified); // XXX: this is never free'd
+                    // NOTE: if the CPU number is not online, sched_affinity will fail later
+                    size_t pinorder_cpu_count = CPU_COUNT(&pinorder_specified_cores);
+                    if (pinorder_cpu_count > psysinfo->num_cores) {
+                        fprintf(stderr, "ERROR: the pinorder %s specifies %zu CPUs, but only %zu CPUs are configured.\n",
+                            this_pinorder, pinorder_cpu_count, psysinfo->num_cores);
+                        exit(-1);
+                    }
+
+                    p = malloc(sizeof(int) * num_cpus_specified);
 
                     if (!p) {
                         fprintf(stderr, "ERROR: cannot allocate enough memory for pinorder structure.\n");
@@ -429,27 +499,60 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
                         p[i] = cpus_specified[i];
                     }
 
+#if 0               // shouldn't use pargs->verbose here because we might not yet have parsed -v
+                    printf("INFO: pinorder %s uses %zu CPUs\n", this_pinorder, num_cpus_specified);
+#endif
                 } else {
 
-                    // -t num_threads
+                    // -t num_threads[:interleave]
+                    size_t pinorder_string_buf_len = strlen(optarg) + 2;
+                    this_pinorder = malloc(pinorder_string_buf_len);
+                    if (! this_pinorder) { fprintf(stderr, "ERROR: could not malloc the pinorder string for -t %s\n", optarg); exit(-1); }
+                    this_pinorder[0] = 't';
+                    this_pinorder[1] = '\0';
+                    strcpy(this_pinorder + 1, optarg);  // this_pinorder = "t$(num_threads)"
 
-                    num_cpus_specified = strtol(optarg, NULL, 0);
+                    long numbers[2];
 
-                    if (num_cpus_specified > psysinfo->num_online_cores) {
-                        // TODO:  move this kind of validation out of arg parsing and into later arg validation phase
-                        fprintf(stderr, "ERROR: thread count must not be more than the number of online cores, %zu.\n", psysinfo->num_online_cores);
+                    size_t num_count = parse_num_threads(optarg, (unsigned long *) numbers);
+                    if (num_count == 0) {
+                        fprintf(stderr, "ERROR: could not parse -t %s as m[:i], or one of them is not a number or ends in an unexpected character\n", this_pinorder);
                         exit(-1);
                     }
 
-                    // for -t num_threads, the .cpu_list pointer is NULL to indicate that the arrangement is to be done later, i.e.:
-                    // pinorders[].cpu_list = NULL
-                    // pinorders[].num_threads = num_threads
+#if 0
+                    for (size_t i = 0; i < num_count; i++) {
+                        printf("numbers[%zu] = %lu\n", i, numbers[i]);;
+                    }
+#endif
 
+                    num_cpus_specified = numbers[0];
+                    ileave = num_count == 1 ? 0 : numbers[1];
+
+                    if ((long) ileave < 0) {
+                        fprintf(stderr, "ERROR: in -t %s, interleave is negative, which is not supported\n", this_pinorder);
+                        exit(-1);
+                    }
+
+                    if (num_cpus_specified > psysinfo->num_online_cores) {
+                        // TODO:  move this kind of validation out of arg parsing and into later arg validation phase
+                        fprintf(stderr, "ERROR: in -t %s, the thread count must not be more than the number of online cores, %zu.\n", this_pinorder, psysinfo->num_online_cores);
+                        exit(-1);
+                    }
+
+                    // for -t num_threads, pinorders[].cpu_list = NULL to indicate allocation in main()
+
+#if 0               // shouldn't use pargs->verbose here because we might not yet have parsed -v
+                    printf("INFO: -t %s uses %zu CPUs with interleave = %zu\n",
+                            this_pinorder, num_cpus_specified, ileave);
+#endif
                 }
 
                 REALLOCARRAY(pinorders);
-                pargs->pinorders[pargs->num_pinorders].cpu_list = p;
+                pargs->pinorders[pargs->num_pinorders].pinorder_string = this_pinorder;    // this is the strdup'd optarg
+                pargs->pinorders[pargs->num_pinorders].cpu_list = p;        // for -t, this is NULL; for -o, this is the malloc'd cpu list
                 pargs->pinorders[pargs->num_pinorders].num_threads = num_cpus_specified;
+                pargs->pinorders[pargs->num_pinorders].ileave = ileave;
                 pargs->num_pinorders++;
             }
             break;
@@ -565,16 +668,95 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
 
 
 static void print_pinorder(const pinorder_t * p) {
-    size_t num_threads = p->num_threads;
-    printf("num_threads = %zu\n", num_threads);
     if (p->cpu_list == NULL) {
         printf("cpu_list not yet calculated\n");
         return;
     }
+    size_t num_threads = p->num_threads;
     for (size_t i = 0; i < num_threads; i++) {
-        printf("[%zu] = %d\n", i, p->cpu_list[i]);
+        if (i) { printf(", "); }
+        printf("[%zu] = %d", i, p->cpu_list[i]);
     }
+    printf("\n");
 }
+
+
+static size_t parse_helper(char * s, unsigned long * p_numbers, const char ** delimits, const size_t nums_to_parse_max) {
+
+    char * token, * endptr;
+
+//    printf("parse_helper got nums_to_parse_max = %zu\n", nums_to_parse_max);
+
+    for (size_t j = 0; j < nums_to_parse_max; j++) {
+
+        const char * delim = delimits[j];
+        int not_last_iter = j < (nums_to_parse_max - 1);
+
+//        printf("s = %p, s = %s\n", s, s);
+
+        token = not_last_iter ? strsep(&s, delim) : s;
+
+        p_numbers[j] = strtoul(token, &endptr, 0);
+
+        if (endptr == token) {
+            // ERROR: strtoul found no digits
+            //printf("strotul found no digits in token=%s\n", token);
+            return 0;
+        }
+
+        if (endptr && *endptr != '\0') {
+            // strtoul ended on a non-NULL character
+            if (! not_last_iter) {
+                // ERROR: strotul found a non-NULL character on the last possible position
+                return 0;
+            }
+
+            if (! strchr(delim, *endptr)) {
+                // ERROR: strtoul did not end on an expected delimiter character when not in the last possible position
+                return 0;
+            }
+        }
+
+        // only m was found
+        if (not_last_iter && s == NULL) {
+            return j + 1;
+        }
+
+    }
+
+    return nums_to_parse_max;
+}
+
+
+size_t parse_num_threads(char * s, unsigned long * p_numbers) {
+
+    // -t num_threads[:interleave]  -> -t m     -t m:n
+
+    const char * num_threads_delimits[] = {
+        ":",    // -t m[:n]
+    };
+
+    const size_t num_num_threads_delimits = sizeof(num_threads_delimits) / sizeof(num_threads_delimits[0]);
+    const size_t max_num_params = num_num_threads_delimits + 1;
+
+    return parse_helper(s, p_numbers, num_threads_delimits, max_num_params);
+}
+
+
+size_t parse_cpulist_range(char * s, unsigned long * p_numbers) {
+
+    // -o m-n[:skip]    --> -o m        -o m-n      -o m-n:skip
+
+    const char * cpu_range_delimits[] = {
+        "-",    // -t m-n
+        ":",    // -t m-n:s
+    };
+    const size_t num_cpu_range_delimits = sizeof(cpu_range_delimits) / sizeof(cpu_range_delimits[0]);
+    const size_t max_num_params = num_cpu_range_delimits + 1;
+
+    return parse_helper(s, p_numbers, cpu_range_delimits, max_num_params);
+}
+
 
 void print_test_args(const test_args_t * p) {
     printf("test_args:\n");
@@ -589,7 +771,6 @@ void print_test_args(const test_args_t * p) {
     for (size_t i = 0; i < p->num_pars; i++) {
         printf(" %lu%s%c", p->pars[i].t, p->pars[i].unit == NS ? "ns" : "inst", (i == p->num_pars - 1) ? '\n' : ',');
     }
-    printf("ileave = %lu\n", p->ileave);    // -i    interleave value for SMT pinning
     printf("scheduling_policy = %d (%s)\n",
             scheduling_policy_map[p->scheduling_policy].value,
             scheduling_policy_map[p->scheduling_policy].name);
@@ -597,10 +778,9 @@ void print_test_args(const test_args_t * p) {
     printf("cpuorder_filename = %s\n", p->cpuorder_filename);
     printf("num_pinorders = %zu\n", p->num_pinorders);
     for (size_t i = 0; i < p->num_pinorders; i++) {
-        if (p->pinorders[i].num_threads) {
-            printf("pinorder %zu\n", i);
-            print_pinorder(&(p->pinorders[i]));
-        }
+        printf("pinorder %zu num_threads=%zu, ileave=%zu, pinorder_string=%s: ",
+                i, p->pinorders[i].num_threads, p->pinorders[i].ileave, p->pinorders[i].pinorder_string);
+        print_pinorder(&(p->pinorders[i]));
     }
     printf("timeout_usec = %lu\n", p-> timeout_usec);
     printf("hugepagesz = %d\n", p->hugepagesz);

@@ -637,9 +637,19 @@ static void json_output(test_args_t * args) {
         json_t * po_list = json_get_one_pinorder_list(p_pinorder);
         json_object_set_new(json_result, "pinorder", po_list);
 
+        // store the pinorder string
+        json_t * po_string = p_pinorder->pinorder_string ?
+            json_string(p_pinorder->pinorder_string) : json_null();
+        json_object_set_new(json_result, "pinorder_string", po_string);
+
         // store the pinorder number
         json_object_set_new(json_result, "pinorder_number",
              json_integer(p_pinorder - p_pinorders));
+
+        // store the cpuorder filename
+        json_t * cpuorder_filename = args->cpuorder_filename ?
+            json_string(args->cpuorder_filename) : json_null();
+        json_object_set_new(json_result, "cpuorder_filename", cpuorder_filename);
 
         // store the per-thread stats as an array
         json_t * json_per_thread_stats = json_array();
@@ -757,13 +767,30 @@ void print_summary(test_args_t * args) {
 
         printf("pinorders:\n");
     }
-    printf("po  cpus\n");
+
+    // find the longest pinorder string length
+    size_t max_pinorder_strlen = 0;
     for (size_t i = 0; i < num_pinorders; i++) {
         const pinorder_t * p = &(p_pinorders[i]);
-        printf("%-2zu ", i);
-        for (size_t j = 0; j < p->num_threads; j++) {
-            printf(" %d", p->cpu_list[j]);
+        if (p->pinorder_string) {
+            size_t l = strlen(p->pinorder_string);
+            max_pinorder_strlen = MAX(max_pinorder_strlen, l);
         }
+    }
+
+    // don't be less than strlen("name") = 4
+    max_pinorder_strlen = MAX(max_pinorder_strlen, 4);
+
+    printf("%-3s %-*s  cpus\n", "po", (int) max_pinorder_strlen, "name");
+
+    for (size_t i = 0; i < num_pinorders; i++) {
+        const pinorder_t * p = &(p_pinorders[i]);
+        printf("%-3zu %-*s  ", i, (int) max_pinorder_strlen, p->pinorder_string ? p->pinorder_string : "");
+
+        for (size_t j = 0; j < p->num_threads; j++) {
+            printf("%*s%d", j!=0, "", p->cpu_list[j]);  // infix whitespace join
+        }
+
         printf("\n");
     }
     printf("\n");
