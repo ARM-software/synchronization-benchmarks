@@ -96,7 +96,7 @@ static void new_print_usage (const char * invoc) {
 #ifdef JSON_OUTPUT
     "      --json filename                         save results to filename as a json\n"
 #endif
-//  "      --blackhole-numtries    integer         numtries for blackhole\n"  //undocumented
+//  "      --blackhole-numtries    integer         number of binary search steps for calibrate_blackhole\n"  //undocumented
     " -Y | --ignore-unknown-scaling-governor       do not exit as error if CPU scaling driver+governor is known bad/not known good\n"
     " -Z | --suppress-cpu-frequency-warnings       suppress CPU frequecy scaling / governor warnings\n"
 #ifdef __aarch64__
@@ -299,7 +299,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
         {"help",                no_argument,        NULL,         'h'},
         {"verbose",             no_argument,        NULL,         longopt_verbose},
         {"more-verbose",        no_argument,        NULL,         longopt_more_verbose},
-        {"blackhole-numtries",  required_argument,  NULL,         longopt_blackhole_numtries},
+        {"blackhole-numtries",  required_argument,  NULL,         longopt_blackhole_numtries},  // undocumented
         {0,                     0,                  NULL,         0}
     };
 
@@ -521,7 +521,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
           case longopt_more_verbose:
             pargs->verbose = VERBOSE_MORE;
             break;
-          case longopt_blackhole_numtries:
+          case longopt_blackhole_numtries:  // undocumented
             pargs->blackhole_numtries = strtoul(optarg, NULL, 0);
             break;
 #ifdef __aarch64__
