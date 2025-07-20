@@ -209,7 +209,7 @@ int main(int argc, char** argv)
         .cpuorder_filename = NULL,
         .verbose = VERBOSE_LOW,
         .iterations = 1,
-        .blackhole_numtries = 15,
+        .blackhole_numtries = 15,   // number of binary search steps for calibrate_blackhole; undocumented
     };
 
     if (parse_args(argc, argv, &args, &sysinfo)) {
