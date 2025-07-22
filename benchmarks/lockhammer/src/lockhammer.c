@@ -779,14 +779,31 @@ static void run_one_experiment (test_args_t * args,
 static unsigned long calculate_affinity(unsigned long thread_num, unsigned long num_cores, unsigned long ileave) {
 
     /*
-     * The concept of "interleave" is used here to allow for specifying
-     * whether increasing cores counts first populate physical cores or
-     * hardware threads within the same physical core. This assumes the
-     * following relationship between logical core numbers (N), hardware
-     * threads per core (K), and physical cores (N/K):
+     * The "interleave" parameter given through -t num_threads:interleave is
+     * used to place worker threads on algorithmically selected logical CPUs
+     * with the intent of using separate physical cores vs. hardware threads
+     * within the same physical core.
+     *
+     * This algorithm computes a target logical CPU number, but it does not
+     * confirm whether that CPU is online or not, and if it is not, an error
+     * will occur when the CPU affinity scheduling is attempted.
+     *
+     * This algorithm does not work well for systems of hybrid CPUs consisting
+     * of threaded vs. non-threaded cores, systems with disabled CPUs, and
+     * multisocket systems, so the usability of the interleave parameter is
+     * highly system-dependent.
+     *
+     * A more flexible alternative is to use the pinorder -o cpulist flag to
+     * assign worker threads onto individually-chosen logical CPUs.
+     *
+     * For this discussion, consider the following relationship between logical
+     * core numbers (N), hardware threads per core (K), and physical cores
+     * (N/K), where sequentially increasing logical CPU numbers map to a
+     * hwthread on separate physical cores and then wrap around to another
+     * hwthread on an already-visited physical core.
      *
      *  physical core |___core_0__|___core_1__|_core_N/K-1|
-     *         thread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
+     *       hwthread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
      *  --------------|-|-|---|---|-|-|---|---|-|-|---|---|
      *   logical core | | |   |   | | |   |   | | |   |   |
      *              0 |*| |   |   | | |   |   | | |   |   |
@@ -801,12 +818,36 @@ static unsigned long calculate_affinity(unsigned long thread_num, unsigned long 
      *            ... |...................................|
      *            N-1 | | |   |   | | |   |   | | |   | * |
      *
-     * Thus by setting the interleave value to 1 physical cores are filled
-     * first with subsequent cores past N/K adding subsequent threads
-     * on already populated physical cores.  On the other hand, setting
-     * interleave to K causes the algorithm to populate 0, N/K, 2N/K and
-     * so on filling all hardware threads in the first physical core prior
-     * to populating any threads on the second physical core.
+     * Thus, by setting interleave=1, physical cores are filled first with
+     * subsequent cores past N/K adding subsequent threads on already populated
+     * physical cores.  On the other hand, setting interleave=K to K causes the
+     * algorithm to populate 0, N/K, 2N/K and so on filling all hardware
+     * threads in the first physical core prior to populating any threads on
+     * the second physical core.
+     *
+     * Now, consider a logical to physical CPU arrangement where sequentially
+     * numbered CPUs map to hwthreads first and then to physical cores;
+     * interleave=1 would place as such.  To use physical cores first, use
+     * interleave=K.
+     *
+     *  physical core |___core_0__|___core_1__|_core_N/K-1|
+     *         thread |0|1|...|K-1|0|1|...|K-1|0|1|...|K-1|
+     *  --------------|-|-|---|---|-|-|---|---|-|-|---|---|
+     *   logical core | | |   |   | | |   |   | | |   |   |
+     *              0 |*| |   |   | | |   |   | | |   |   |
+     *              1 | |*|   |   | | |   |   | | |   |   |
+     *            ... |...................................|
+     *            K-1 | | |   |  *| | |   |   | | |   |   |
+     *              K | | |   |   |*| |   |   | | |   |   |
+     *            K+1 | | |   |   | |*|   |   | | |   |   |
+     *            ... |...................................|
+     *           2K-1 | | |   |   | | |   |  *| | |   |   |
+     *            ... |...................................|
+     *      (N/K-1)*K | | |   |   | | |   |   |*| |   |   |
+     *    1+(N/K-1)*K | | |   |   | | |   |   | |*|   |   |
+     *            ... |...................................|
+     *  K-1+(N/K-1)*K | | |   |   | | |   |   | | |   |  *| // this logical CPU number would be equal to N-1
+     *
      */
 
     if (thread_num >= num_cores) {
@@ -815,19 +856,21 @@ static unsigned long calculate_affinity(unsigned long thread_num, unsigned long 
         exit(-1);
     }
 
-    unsigned long threads_per_core = ileave;
     unsigned long thread_offset = 0;
     unsigned long base_core = 0;
 
     for (unsigned long i = 0; i < thread_num; i++) {
-        base_core += threads_per_core;
-        if (base_core >= num_cores) {
+        base_core += ileave;
+        if (base_core >= psysinfo->num_cores) {
             base_core = 0;
             thread_offset++;
         }
     }
 
     unsigned long target_core = base_core + thread_offset;
+
+//  printf("thread_num = %lu, base_core = %lu, thread_offset = %lu, target_core = %lu\n",
+//         thread_num, base_core, thread_offset, target_core);
 
     return target_core;
 }
