@@ -76,7 +76,7 @@ static void new_print_usage (const char * invoc) {
     " -a | --num-acquires          integer         number of acquires to do per thread\n"
     "\n"
     "experiment length (time-based):\n"
-    " -T | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds\n"
+    " -D | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds\n"
     " -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks\n"
     " -I | --run-limit-inner-iterations  integer   number of inner iterations of measurement between hardware timer polls\n"
     "      --hwtimer-frequency     freq_hertz      Override HW timer frequency in Hertz instead of trying to determine it\n"
@@ -313,7 +313,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
     while (1) {
         this_arg = argv[optind];
         // printf("before getopt_long, argv[0] = %s, this_arg = argv[optind] = %s\n", argv[0], this_arg);
-        int opt = getopt_long(argc, argv, ":t:a:c:p:o:S:C:I:O:M:hn:T:vYZ", long_options, NULL);
+        int opt = getopt_long(argc, argv, ":t:a:c:p:o:S:C:I:O:M:hn:D:vYZ", long_options, NULL);
         long optval;
         char * endptr = NULL;
 
@@ -559,7 +559,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
           case 'S':
             pargs->scheduling_policy = parse_scheduling_policy(optarg);
             break;
-          case 'T':
+          case 'D':
           case longopt_run_limit_seconds:
             pargs->run_limit_seconds = strtod(optarg, NULL);
             break;
