@@ -156,7 +156,7 @@ The minimum required flags to run a test:
 		-p nanoseconds, --pn nanoseconds
 
 	* workload length (time-based), one of the following
-		-T float_seconds
+		-D float_seconds
 		-O hwtimer_ticks
 
 	- OR -
@@ -166,7 +166,7 @@ The minimum required flags to run a test:
 
 Example:
 
-	$ build.relax_pause/lh_ticket_spinlock -c 500 -p 500 -T 2
+	$ build.relax_pause/lh_ticket_spinlock -c 500 -p 500 -D 2
 
 	Starting test_name=ticket_spinlock variant_name=relax_pause test_type=
 	INFO: setting thread count to the number of available cores (24).
@@ -209,7 +209,7 @@ experiment length (work-based):
  -a | --num-acquires          integer         number of acquires to do per thread
 
 experiment length (time-based):
- -T | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds
+ -D | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds
  -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks
  -I | --run-limit-inner-iterations  integer   number of inner iterations of measurement between hardware timer polls
       --hwtimer-frequency     freq_hertz      Override HW timer frequency in Hertz instead of trying to determine it
@@ -410,7 +410,7 @@ When lockhammer is run as root (e.g., by invoking it with sudo),
 the physical address of the hugepage allocated will be printed in the
 output.
 
-    $ sudo build.relax_pause/lh_empty  -M default  -T 10 -o 8,9,10 --ignore-unknown-scaling-governor
+    $ sudo build.relax_pause/lh_empty  -M default  -D 10 -o 8,9,10 --ignore-unknown-scaling-governor
     using mmap with hugepagesz = default
     determining timer frequency ...
     found it as 2300000000 Hz (which could be wrong, use --estimate-timer-frequency to measure and --timer-frequency to override)
@@ -423,7 +423,7 @@ map the same hugepage by physical address.  Lockhammer will try to
 llocate up to 10 hugepages to find one that has the requested physical
 address.
 
-    $ sudo build.relax_pause/lh_cas_rw_lock  -M default  -T 10 -o 8,9,10 --ignore-unknown-scaling-governor --hugepage-physaddr 0x25c400000
+    $ sudo build.relax_pause/lh_cas_rw_lock  -M default  -D 10 -o 8,9,10 --ignore-unknown-scaling-governor --hugepage-physaddr 0x25c400000
     using mmap with hugepagesz = default
     determining timer frequency ...
     found it as 2300000000 Hz (which could be wrong, use --estimate-timer-frequency to measure and --timer-frequency to override)
