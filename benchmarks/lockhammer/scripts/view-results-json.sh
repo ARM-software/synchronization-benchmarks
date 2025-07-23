@@ -15,6 +15,8 @@ declare -a CRIT
 declare -a PAR
 declare -a NUM_THREADS
 declare -a VARIANT_NAMES
+declare -a ADDITIONAL_KEYS
+declare -a TAG_NAMES
 
 usage() {
 cat<<"USAGE"
@@ -26,6 +28,7 @@ select options:
 -p par            nominal parallel time/inst parameter (repeatable)
 -t num_threads    number of threads (repeatable)
 -v variant_name   variant name (repeatable)
+-T tag            select only results with these tags (repeatable)
 
 sort options:
 -s sort_string    sort string (default is by '.num_threads')
@@ -33,6 +36,7 @@ sort options:
 -r                reverse the sort
 
 output options:
+-a key            display values of the additional key (repeatable)
 -D                dump the records in a json array
 
 -h                print this usage help message
@@ -52,7 +56,7 @@ USAGE
 
 shopt -s extglob
 
-while getopts ":c:p:t:v:s:rDh" name; do
+while getopts ":c:p:t:v:T:a:s:rDh" name; do
 	case "${name}" in
 		c)	CRIT+=(${OPTARG})
 			;;
@@ -61,6 +65,10 @@ while getopts ":c:p:t:v:s:rDh" name; do
 		t)	NUM_THREADS+=(${OPTARG})
 			;;
 		v)	VARIANT_NAMES+=(${OPTARG})
+			;;
+		T)	TAG_NAMES+=(${OPTARG})
+			;;
+		a)	ADDITIONAL_KEYS+=(${OPTARG})
 			;;
 		s)	SORT_STRING=${OPTARG}
 			;;
@@ -144,6 +152,7 @@ SELECTOR_ARGLIST+=$(make_selector nominal_parallel "${PAR[@]}")
 SELECTOR_ARGLIST+=$(make_selector nominal_critical "${CRIT[@]}")
 SELECTOR_ARGLIST+=$(make_selector num_threads "${NUM_THREADS[@]}")
 SELECTOR_ARGLIST+=$(make_selector variant_name as_string "${VARIANT_NAMES[@]}")
+SELECTOR_ARGLIST+=$(make_selector tag as_string "${TAG_NAMES[@]}")
 
 SELECTOR=' [.[] | select('$SELECTOR_ARGLIST')] '
 
@@ -209,6 +218,7 @@ read -r -d '' -a KEY_LIST <<'EOF_KEY_LIST'
 test_name
 #test_type_name
 variant_name
+tag
 num_threads
 nominal_critical
 nominal_parallel
@@ -224,6 +234,8 @@ host
 wall_elapsed_ns_per_lock_acquire
 total_lock_acquires_per_second
 EOF_KEY_LIST
+
+KEY_LIST+=("${ADDITIONAL_KEYS[@]}")
 
 # SPECIAL_HEADER is what to print in the header for a key name. If the key does not exist, then the key name is used as the header.
 declare -A SPECIAL_HEADER
