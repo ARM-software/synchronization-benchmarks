@@ -102,6 +102,7 @@ static void new_print_usage (const char * invoc) {
 #ifdef __aarch64__
     "      --disable-outline-atomics-lse           disable use of LSE in outline atomics\n"
 #endif
+    " -T | --tag                   string          tag string to store in JSON\n"
     " -v | --verbose                               print verbose messages (use 2x for more verbose)\n"
     "      --more-verbose                          print more verbose messages\n"
     "\n"
@@ -261,6 +262,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
         longopt_more_verbose,
         longopt_blackhole_numtries,
         longopt_disable_outline_atomics_lse,
+        longopt_tag,
     };
 
     static struct option long_options[] = {
@@ -299,6 +301,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
 #ifdef __aarch64__
         {"disable-outline-atomics-lse", no_argument,NULL,         longopt_disable_outline_atomics_lse},
 #endif
+        {"tag",                 required_argument,  NULL,         longopt_tag},
         {"help",                no_argument,        NULL,         'h'},
         {"verbose",             no_argument,        NULL,         longopt_verbose},
         {"more-verbose",        no_argument,        NULL,         longopt_more_verbose},
@@ -313,7 +316,7 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
     while (1) {
         this_arg = argv[optind];
         // printf("before getopt_long, argv[0] = %s, this_arg = argv[optind] = %s\n", argv[0], this_arg);
-        int opt = getopt_long(argc, argv, ":t:a:c:p:o:S:C:I:O:M:hn:D:vYZ", long_options, NULL);
+        int opt = getopt_long(argc, argv, ":t:a:c:p:o:S:C:I:O:M:hn:D:T:vYZ", long_options, NULL);
         long optval;
         char * endptr = NULL;
 
@@ -632,6 +635,10 @@ int parse_args(int argc, char ** argv, test_args_t * pargs, const system_info_t 
             pargs->disable_outline_atomics_lse = 1;
             break;
 #endif
+          case 'T':
+          case longopt_tag:
+            pargs->tag = optarg;
+            break;
           case 'v':
           case longopt_verbose:
             if (pargs->verbose >= VERBOSE_YES) {
@@ -775,6 +782,7 @@ void print_test_args(const test_args_t * p) {
             scheduling_policy_map[p->scheduling_policy].value,
             scheduling_policy_map[p->scheduling_policy].name);
 
+    printf("tag = %s\n", p->tag);
     printf("cpuorder_filename = %s\n", p->cpuorder_filename);
     printf("num_pinorders = %zu\n", p->num_pinorders);
     for (size_t i = 0; i < p->num_pinorders; i++) {

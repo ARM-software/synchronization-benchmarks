@@ -91,7 +91,8 @@ typedef struct {
     unsigned long hwtimer_end;              // hwtimer start after measurement
 } per_thread_stats_t;
 
-typedef struct {
+
+typedef struct {  // report_data_t
     pinorder_t *  pinorder;
     per_thread_stats_t * per_thread_stats;
 
@@ -110,6 +111,7 @@ typedef struct {
     const char * test_name;
     const char * variant_name;
     const char * test_type_name;
+    const char * tag;
 
     unsigned long meas_number;
     unsigned long test_number;
@@ -408,6 +410,7 @@ void standard_report (pinorder_t * p_pinorder, unsigned long meas_number, unsign
     s->test_name = test_name;
     s->variant_name = variant_name;
     s->test_type_name = test_type_name;
+    s->tag = p_test_args->tag;
 
     s->nominal_critical = crit->t;
     s->nominal_parallel = par->t;
@@ -651,6 +654,10 @@ static void json_output(test_args_t * args) {
             json_string(args->cpuorder_filename) : json_null();
         json_object_set_new(json_result, "cpuorder_filename", cpuorder_filename);
 
+        // store the tag string
+        json_t * tag_string = args->tag ? json_string(args->tag) : json_null();
+        json_object_set_new(json_result, "tag", tag_string);
+
         // store the per-thread stats as an array
         json_t * json_per_thread_stats = json_array();
 
@@ -756,8 +763,8 @@ void print_summary(test_args_t * args) {
     const size_t num_pinorders = args->num_pinorders;
     const int verbose = args->verbose;
 
-    printf("Finished test_name=%s variant_name=%s test_type=%s\n",
-            test_name, variant_name, test_type_name);
+    printf("Finished test_name=%s variant_name=%s test_type=%s tag=%s\n",
+            test_name, variant_name, test_type_name, args->tag ? args->tag : "");
 
     if (verbose >= VERBOSE_YES) {
         printf("\n");
