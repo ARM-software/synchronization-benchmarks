@@ -150,6 +150,7 @@ typedef struct {
 #ifdef __aarch64__
     char disable_outline_atomics_lse;
 #endif
+    const char * tag;
     int verbose;
     size_t iterations;
     size_t blackhole_numtries;

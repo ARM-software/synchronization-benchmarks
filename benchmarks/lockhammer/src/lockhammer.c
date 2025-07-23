@@ -206,6 +206,7 @@ int main(int argc, char** argv)
         .disable_outline_atomics_lse = 0,
 #endif
         .cpuorder_filename = NULL,
+        .tag = NULL,
         .verbose = VERBOSE_LOW,
         .iterations = 1,
         .blackhole_numtries = 15,   // number of binary search steps for calibrate_blackhole; undocumented
@@ -218,8 +219,8 @@ int main(int argc, char** argv)
     // call the test-specific argument parser, if it exists
     measure_setup_parse_test_args(&args, argc, argv);
 
-    printf("Starting test_name=%s variant_name=%s test_type=%s\n",
-            test_name, variant_name, test_type_name);
+    printf("Starting test_name=%s variant_name=%s test_type=%s tag=%s\n",
+            test_name, variant_name, test_type_name, args.tag ? args.tag : "");
 
     if (args.verbose >= VERBOSE_MORE) {
         print_system_info(&sysinfo);
