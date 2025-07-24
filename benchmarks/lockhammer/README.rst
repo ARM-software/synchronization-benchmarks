@@ -26,7 +26,7 @@ The Makefile supports multiple build configuration variants selected using
 USe_* variables given to make.  The following example uses the __atomic
 intrinsics provided by the compiler instead of assembly routines provided by
 lockhammer (USE_BUILTIN=1) and an empty asm volatile ("") statement for the
-cpu_relax() macro (USE_RELAX+empty).
+cpu_relax() macro (USE_RELAX+empty).::
 
 	# build binaries into build.builtin.relax_empty
 	make USE_BUILTIN=1 USE_RELAX=empty
@@ -41,7 +41,7 @@ See the comments at the top of the Makefile for a description of the variables.
 
 Because typing out all of the combinations of variables is tedious, the
 Makefile supports the phony target 'allvariants' that will build all of the
-combinations.  The Makefile also supports parallel builds.
+combinations.  The Makefile also supports parallel builds.::
 
 	# build all variants using 8 jobs at a time
 	make -j 8 allvariants
@@ -127,7 +127,7 @@ Usage
 
 The build system will make a directory named for the build configuration and
 place into it a separate lockhammer binary for each test named in the format
-lh_[testname].
+lh_[testname].::
 
 	$ ls -1 build.relax_pause/lh_*
 	build.relax_pause/lh_cas_event_mutex
@@ -165,6 +165,7 @@ The minimum required flags to run a test:
 		-a num_acquires
 
 Example:
+::
 
 	$ build.relax_pause/lh_ticket_spinlock -c 500 -p 500 -D 2
 
@@ -184,56 +185,58 @@ settings will be run.
 
 The supported flags are shown when a lockhammer binary is run with the -h flag:
 ::
-build.relax_pause/lh_empty [args]
 
-processor affinity selection (need at least one of -t or -o; permuted on each):
- -o | --pinning-order   n,[n,[n...]]          a list of CPUs on which to run
- -t | --num-threads     threads[:interleave]  number of threads to use
-        interleave = 0  Enumerate CPUs from the existing affinity mask (this is the default)
-        interleave >= 1 algorithmically increment CPU number, e.g. -t 3:2 means CPU 0,2,4
-                        Overrides processor affinity mask, or misplace on an offline CPU.
- -C | --cpuorder-file         filename        for -t/--num-threads, allocate CPUs by number in the order in this text file
+	build.relax_pause/lh_empty [args]
 
-lock durations (at least one of both critical and parallel duration must be specified; will be permuted):
- -c | --critical              duration[ns|in] critical duration measured in nanoseconds (use "ns" suffix) or instructions (use "in" suffix; default is "in" if omitted)
- -p | --parallel              duration[ns|in] parallel duration measured in nanoseconds (use "ns" suffix) or instructions (use "in" suffix; default is "in" if omitted)
---cn| --critical-nanoseconds  nanoseconds     upon acquiring a lock, duration to hold the lock ("-c 1234ns" equivalent)
---ci| --critical-instructions instructions    upon acquiring a lock, number of spin-loop instructions to run while holding the lock ("-c 1234in" equivalent)
---pn| --parallel-nanoseconds  nanoseconds     upon releasing a lock, duration to wait before attempting to reacquire the lock ("-p 1234ns" equivalent)
---pi| --parallel-instructions instructions    upon releasing a lock, number of spin-loop instructions to run while before attempting to reacquire the lock ("-p 1234in" equivalent)
+	processor affinity selection (need at least one of -t or -o; permuted on each):
+	 -o | --pinning-order   m[,m[-n[:s]]...]      run on CPU m; CPU m-n; CPU m-n skipping by s
+	 -t | --num-threads     threads[:interleave]  number of threads to use
+		interleave = 0  Enumerate CPUs from the existing affinity mask (this is the default)
+		interleave >= 1 algorithmically increment CPU number, e.g. -t 3:2 means CPU 0,2,4
+				Overrides processor affinity mask, or misplace on an offline CPU.
+	 -C | --cpuorder-file         filename        for -t/--num-threads, allocate CPUs by number in the order in this text file
 
-experiment iterations:
- -n | --iterations            integer         number of times to run each measurement
+	lock durations (at least one of both critical and parallel duration must be specified; will be permuted):
+	 -c | --critical              duration[ns|in] critical duration measured in nanoseconds (use "ns" suffix) or instructions (use "in" suffix; default is "in" if omitted)
+	 -p | --parallel              duration[ns|in] parallel duration measured in nanoseconds (use "ns" suffix) or instructions (use "in" suffix; default is "in" if omitted)
+	--cn| --critical-nanoseconds  nanoseconds     upon acquiring a lock, duration to hold the lock ("-c 1234ns" equivalent)
+	--ci| --critical-instructions instructions    upon acquiring a lock, number of spin-loop instructions to run while holding the lock ("-c 1234in" equivalent)
+	--pn| --parallel-nanoseconds  nanoseconds     upon releasing a lock, duration to wait before attempting to reacquire the lock ("-p 1234ns" equivalent)
+	--pi| --parallel-instructions instructions    upon releasing a lock, number of spin-loop instructions to run while before attempting to reacquire the lock ("-p 1234in" equivalent)
 
-experiment length (work-based):
- -a | --num-acquires          integer         number of acquires to do per thread
+	experiment iterations:
+	 -n | --iterations            integer         number of times to run each measurement
 
-experiment length (time-based):
- -D | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds
- -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks
- -I | --run-limit-inner-iterations  integer   number of inner iterations of measurement between hardware timer polls
-      --hwtimer-frequency     freq_hertz      Override HW timer frequency in Hertz instead of trying to determine it
-      --estimate-hwtimer-frequency cpu_num    Estimate HW timer frequency on cpu_num
-      --timeout-usecs         integer         kill benchmark if it exceeds this number of microseconds
+	experiment length (work-based):
+	 -a | --num-acquires          integer         number of acquires to do per thread
 
-scheduler control:
- -S | --scheduling-policy     FIFO|RR|OTHER   set explicit scheduling policy of created threads (needs root)
+	experiment length (time-based):
+	 -D | --run-limit-seconds     float_seconds   each worker thread runs for this number of seconds
+	 -O | --run-limit-ticks       integer         each worker thread runs for this number of hardware timer ticks
+	 -I | --run-limit-inner-iterations  integer   number of inner iterations of measurement between hardware timer polls
+	      --hwtimer-frequency     freq_hertz      Override HW timer frequency in Hertz instead of trying to determine it
+	      --estimate-hwtimer-frequency cpu_num    Estimate HW timer frequency on cpu_num
+	      --timeout-usecs         integer         kill benchmark if it exceeds this number of microseconds
 
-memory placement control (hugepages):
- -M | --hugepage-size  <integer|help|default> use hugetlb page for lock memory; see "-M help" for sizes
-      --hugepage-offset       integer         if --hugepage-size is used, the byte offset into the hugepage for the tests' lock
-      --hugepage-physaddr     physaddr        obtain only the hugepage with the physaddr specified (must run as root)
-      --print-hugepage-physaddr               print the physical address of the hugepage obtained, and then exit (must run as root)
+	scheduler control:
+	 -S | --scheduling-policy     FIFO|RR|OTHER   set explicit scheduling policy of created threads (needs root)
 
-other:
-      --json filename                         save results to filename as a json
- -Y | --ignore-unknown-scaling-governor       do not exit as error if CPU scaling driver+governor is known bad/not known good
- -Z | --suppress-cpu-frequency-warnings       suppress CPU frequecy scaling / governor warnings
- -v | --verbose                               print verbose messages (use 2x for more verbose)
-      --more-verbose                          print more verbose messages
+	memory placement control (hugepages):
+	 -M | --hugepage-size  <integer|help|default> use hugetlb page for lock memory; see "-M help" for sizes
+	      --hugepage-offset       integer         if --hugepage-size is used, the byte offset into the hugepage for the tests' lock
+	      --hugepage-physaddr     physaddr        obtain only the hugepage with the physaddr specified (must run as root)
+	      --print-hugepage-physaddr               print the physical address of the hugepage obtained, and then exit (must run as root)
 
-lock-specific:
- -- <workload-specific arguments>             lock-specific arguments are passed after --
+	other:
+	      --json filename                         save results to filename as a json
+	 -Y | --ignore-unknown-scaling-governor       do not exit as error if CPU scaling driver+governor is known bad/not known good
+	 -Z | --suppress-cpu-frequency-warnings       suppress CPU frequecy scaling / governor warnings
+	 -T | --tag                   string          tag string to store in JSON
+	 -v | --verbose                               print verbose messages (use 2x for more verbose)
+	      --more-verbose                          print more verbose messages
+
+	lock-specific:
+	 -- <workload-specific arguments>             lock-specific arguments are passed after --
 
 
 Plotting
@@ -269,56 +272,115 @@ by one and jupyter should be able to generate the png graph locally.
 Using run-tests.sh and view-results-json.sh
 -------------------------------------------
 
-run-tests.sh and view-results-json.sh can be found in the scripts subdirectory.
-These scripts facilitate running many tests and summarizing the measurements.
+The run-tests.sh and view-results-json.sh scripts facilitate running multiple
+tests and summarizing results.  These scripts can be found in the
+benchmarks/lockhammer/scripts subdirectory.
+::
 
-run-tests.sh runs the test binaries and variants found by permuting the entries
-in its VARIANT_LIST, TEST_LIST, CRIT_NS_LIST, and PAR_NS_LIST variables.  The
-script can be run with no arguments, but this will then try to run many
-permutations which will take hours.  Editing the variables in the script is
-advised to help focus the intent of measurements.
+	$ scripts/run-tests.sh -h
+
+	run-tests.sh [options] [-- [remaining args]]
+
+	options:
+
+	Must choose one of -n or -N to run the tests:
+	-n              do a dry run (shows the commands that would run)
+	-N              actually run the tests
+
+	Override script-internal list:
+	-v variant      run only this variant (repeatable); use "-v list" to list
+	-e test_name    run only this test name (repeatable); use "-e list" to list
+
+	-c crit         critical duration flags (repeatable)
+	-p par          parallel duration flags (repeatable)
+
+	-o pinorder     run this pinorder instead of derived list (repeatable) (overrides -P)
+	-t num_threads  num_threads to use instead of derived list (repeatable) (overrides -P)
+	-P skip         processor skip step above 8 CPUs (default 8)
+			For example, -P 16 will measure 2, 4, 8, 24, 40...
+
+	-D sec          duration of each measurement in seconds (default 0.5)
+	-T tag          run from build dirs that match this tag
+	-h              print this usage help message
+
+	-J              do not pass --json flag, and run even if the JSON file exists
+
+	remaining arguments after the "--" separator are passed to lockhammer
 
 
-	scripts/run-tests.sh
+scripts/run-tests.sh should be run from the benchmarks/lockhammer directory
+because it searches for test binaries in build directories named for the build
+variants and an optional tag string.  These names are determined by permuting
+the entries in its VARIANT_LIST and TEST_LIST array variables or on the command
+line using the -v and -e flags, and optional -T tag.  The binaries will be
+named in the format::
 
+	build.$BUILD_VARIANT.$TAG/$TEST_NAME
 
-Each test's results are stored in a json file named $HOSTNAME_S.$test.$BUILD_VARIANT.json
+For each test binary, duration flags are constructed using the entries in the
+CRIT_NS_LIST and PAR_NS_LIST variables or, respectively, the -c and -p flags.
+Thread counts are auto determined using nproc and the value of the -P flag, or
+overridden using -t and -o flags.
 
-These jsons can be summarized using the view-results-json.sh script, which will
-display a summary of all of the jsons given to it in one table.
+Editing the variables in the script is advised to help focus the intent of
+measurements.
 
+scripts/run-tests.sh requires either the flag -n (dry run) or -N (not dry run,
+i.e., actually do measurement) to attempt to run the binaries and tests
+parameters.  Without either of these flags, it stops after showing the
+configuration summary.
+
+Each test's results are stored in a json file named in the format::
+
+	$HOSTNAME_S.$test.$BUILD_VARIANT.$TAG.json
+
+These jsons can be summarized using the view-results-json.sh script, which
+displays a summary of all of the jsons given to it in one table.::
 
 	scripts/view-results-json.sh \*.json
 
+The view-results-json.sh help message::
 
-The view-results-json.sh help message:
+	./view-results-json.sh [options] json [json ...]
 
-./view-results-jsons.sh [options] json [json ...]
+	select options:
+	-c crit           nominal critical time/inst parameter (repeatable)
+	-p par            nominal parallel time/inst parameter (repeatable)
+	-t num_threads    number of threads (repeatable)
+	-v variant_name   variant name (repeatable)
+	-T tag            select only results with these tags (repeatable)
 
-select options:
--c crit           nominal critical time/inst parameter (repeatable)
--p par            nominal parallel time/inst parameter (repeatable)
--t num_threads    number of threads (repeatable)
--v variant_name   variant name (repeatable)
+	sort options:
+	-s sort_string    sort string (default is by '.num_threads')
+	-s help           print short header to .key mapping
+	-r                reverse the sort
 
-sort options:
--s sort_string    sort string (default is by '.num_threads')
--s help           print short header to .key mapping
--r                reverse the sort
+	output options:
+	-a key            display values of the additional key (repeatable)
+	-D                dump the records in a json array
 
-output options:
--D                dump the records in a json array
-
--h                print this usage help message
+	-h                print this usage help message
 
 
-Example:
+	Example:
 
-# list all data with threads=8, parallel=1000 or parallel=500, and critical=0
-# from files \*osq_lock\*.json, sort by overhead %
+	# list all data with threads=8, parallel=1000 or parallel=500, and critical=0
+	# from files \*osq_lock\*.json, sort by overhead %
 
-./view-results-json.sh -s overhead_% -t 8 -p 1000 -p 500 -c 0 \*osq_lock\*.json
+	./view-results-json.sh -s overhead_% -t 8 -p 1000 -p 500 -c 0 \*osq_lock\*.json
 
+The result records from all of the specified jsons are combined, and then
+selected using the -c/-p/-t/-v/-T flags.  Then sorting is applied, the order of
+which can be changed using the -s flag by giving it a key name (i.e. the short
+name of a column of data or the actual key name in the json).  The results are
+then shown in a table format.
+
+The values from the jsons are selected from the KEY_LIST variable in the script
+and any additional -a flags given to the script.  The KEY_LIST variable should be
+edited to change the order of or to add/remove keys.
+
+The subset of the selected results' full record can be displayed in json format
+with the -D flag.
 
 
 Persistent Physical Memory for Locks Using Persistent Hugepages
@@ -444,6 +506,10 @@ The CPU number is determined based on the following:
     This places threads on CPU1, CPU2, and CPU3:
 
         -o 1,2,3
+
+    This places threads on even-numbered CPU16-23:
+
+	-o 16-23:2
 
 * number of threads (-t/--num-threads) starting from CPU0
 
