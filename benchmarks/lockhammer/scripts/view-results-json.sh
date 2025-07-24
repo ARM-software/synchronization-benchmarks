@@ -177,6 +177,7 @@ SHORT_HEADER[num_threads]=".num_threads"
 SHORT_HEADER[json]=".input_filename"
 SHORT_HEADER[host]=".hostname"
 SHORT_HEADER[lasom]=".lock_acquires_stddev_over_mean"
+SHORT_HEADER[pinorder]=".pinorder_string"
 
 # print SHORT_HEADER as a table
 if [[ $SORT_STRING == "help" ]]; then
@@ -220,6 +221,7 @@ test_name
 variant_name
 tag
 num_threads
+pinorder_string
 nominal_critical
 nominal_parallel
 cputime_ns_per_lock_acquire
@@ -250,6 +252,7 @@ SPECIAL_HEADER[total_lock_acquires_per_second]="locks/wall_sec"
 SPECIAL_HEADER[lock_acquires_stddev_over_mean]="lasom"
 SPECIAL_HEADER[nominal_critical]="nom_crit"
 SPECIAL_HEADER[nominal_parallel]="nom_par"
+SPECIAL_HEADER[pinorder_string]="pinorder"
 
 # SPECIAL_FILTER is how to have jq format the element. If the key does not exist, then .key is used for the filter.
 declare -A SPECIAL_FILTER
