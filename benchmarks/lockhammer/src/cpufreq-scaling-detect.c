@@ -106,6 +106,10 @@ static char * get_proc_file_first_line (const char * filename) {
         return line;
     }
 
+    // An offline CPU still has the cpufreq pseudo file present with read
+    // permissions, but "Device or resource busy" when accessed, so getline
+    // returns -1.
+
     fprintf(stderr, "unexpectedly getline() returned -1 from reading %s\n", filename);
 
     free(line);
