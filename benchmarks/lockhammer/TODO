@@ -29,7 +29,7 @@ Update SpinPause() in ext/jvm/jvm_objectmonitor.h
 - The SpinPause() function returns 0.  However, this is only the case
   in now very old versions of OpenJDK.  Modern versions use pause
   on 64-bit x86 (amd64) and a parameterized choice of a one or more
-  ISB, or NOP on aarch64.
+  ISB, or NOP on aarch64. (done)
 
 
 ext/linux/hybrid_spinlock*
@@ -37,9 +37,6 @@ ext/linux/hybrid_spinlock*
 
 queued_spinlock
 - queued_spinlock uses the lock pointer as well as mcs_pool, so need a way to have both be reproducible.
-
-tbb_spin_rw_mutex
-- instead of doing operations on the state variable, use the test harness lock pointer for better reproducibility
 
 clh_spinlock
 - instead of operating on global_clh_lock, use the test harness lock pointer for better reproducibility
